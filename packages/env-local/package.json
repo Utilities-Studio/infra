@@ -1,0 +1,18 @@
+{
+	"name": "@utilities-studio/env-local",
+	"version": "1.0.0",
+	"description": "Generate .env.development.local from local Supabase instance",
+	"type": "module",
+	"bin": {
+		"env-local": "./src/index.ts"
+	},
+	"files": [
+		"src"
+	],
+	"devDependencies": {
+		"@types/bun": "^1.2.13"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

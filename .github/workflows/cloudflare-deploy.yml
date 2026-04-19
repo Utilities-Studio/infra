@@ -1,0 +1,185 @@
+name: Deploy Cloudflare Workers
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: string
+      working_directory:
+        description: 'Working directory for the project'
+        required: false
+        type: string
+        default: '.'
+      pre_deploy_commands:
+        description: 'Commands to run before build (e.g. remove files)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: cloudflare-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+    environment:
+      name: ${{ github.event_name == 'pull_request' && format('preview-pr-{0}', github.event.pull_request.number) || inputs.environment }}
+
+    env:
+      DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
+      DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
+      IS_PREVIEW: ${{ github.event_name == 'pull_request' }}
+      DEPLOY_ENV: ${{ github.event_name == 'pull_request' && 'development' || inputs.environment }}
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Comment -- deploy started
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- cloudflare-workers-deploy -->';
+            const pr = context.payload.pull_request.number;
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+
+            const body = [
+              marker,
+              '### :gear: Cloudflare Workers Preview',
+              '',
+              '| Status | Commit | Environment |',
+              '|--------|--------|-------------|',
+              `| :hourglass_flowing_sand: Building... | \`${sha}\` | development |`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: pr, per_page: 100,
+            });
+            const existing = comments.find(c => c.body?.includes(marker));
+
+            const params = { owner: context.repo.owner, repo: context.repo.repo, body };
+            if (existing) {
+              await github.rest.issues.updateComment({ ...params, comment_id: existing.id });
+            } else {
+              await github.rest.issues.createComment({ ...params, issue_number: pr });
+            }
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Push secrets to Cloudflare
+        run: bunx @utilities-studio/sync-env@latest cloudflare --env ${{ env.DEPLOY_ENV }}
+
+      - name: Run pre-deploy commands
+        if: inputs.pre_deploy_commands != ''
+        run: ${{ inputs.pre_deploy_commands }}
+
+      - name: Build
+        run: bun run build -- --mode ${{ env.DEPLOY_ENV }}
+        env:
+          CLOUDFLARE_ENV: ${{ env.DEPLOY_ENV }}
+
+      - name: Deploy (production)
+        if: env.IS_PREVIEW != 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy --env ${{ env.DEPLOY_ENV }}
+          workingDirectory: ${{ inputs.working_directory }}
+          packageManager: bun
+
+      - name: Upload preview version
+        if: env.IS_PREVIEW == 'true'
+        id: preview
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: versions upload --env ${{ env.DEPLOY_ENV }} --preview-alias pr-${{ github.event.pull_request.number }}
+          workingDirectory: ${{ inputs.working_directory }}
+          packageManager: bun
+
+      - name: Comment -- preview live
+        if: github.event_name == 'pull_request' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- cloudflare-workers-deploy -->';
+            const pr = context.payload.pull_request.number;
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const output = `${{ steps.preview.outputs.command-output }}`;
+
+            // Extract preview URL from wrangler output
+            const urlMatch = output.match(/(https:\/\/pr-\d+[^\s]+\.workers\.dev)/);
+            const previewUrl = urlMatch ? urlMatch[1] : null;
+
+            let links = previewUrl ? `[Preview](${previewUrl})` : 'uploaded';
+
+            const body = [
+              marker,
+              '### :gear: Cloudflare Workers Preview',
+              '',
+              '| Status | Commit | Environment | Links |',
+              '|--------|--------|-------------|-------|',
+              `| :white_check_mark: Live | \`${sha}\` | development | ${links} |`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: pr, per_page: 100,
+            });
+            const existing = comments.find(c => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            }
+
+      - name: Comment -- deploy failed
+        if: github.event_name == 'pull_request' && failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- cloudflare-workers-deploy -->';
+            const pr = context.payload.pull_request.number;
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+
+            const body = [
+              marker,
+              '### :gear: Cloudflare Workers Preview',
+              '',
+              '| Status | Commit | Environment |',
+              '|--------|--------|-------------|',
+              `| :x: Failed | \`${sha}\` | development |`,
+              '',
+              `[View logs](${runUrl})`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: pr, per_page: 100,
+            });
+            const existing = comments.find(c => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            }

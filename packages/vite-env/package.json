@@ -1,0 +1,18 @@
+{
+	"name": "@utilities-studio/vite-env",
+	"version": "1.0.0",
+	"description": "Generate vite-env.d.ts type declarations from VITE_ environment variables",
+	"type": "module",
+	"bin": {
+		"vite-env": "./src/index.ts"
+	},
+	"files": [
+		"src"
+	],
+	"devDependencies": {
+		"@types/bun": "^1.2.13"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

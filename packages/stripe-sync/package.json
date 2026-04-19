@@ -1,0 +1,21 @@
+{
+	"name": "@utilities-studio/stripe-sync",
+	"version": "1.0.0",
+	"description": "Sync Stripe products, prices, and webhooks -- push config to Stripe, pull data to Supabase",
+	"type": "module",
+	"bin": {
+		"stripe-sync": "./src/index.ts"
+	},
+	"files": [
+		"src"
+	],
+	"dependencies": {
+		"stripe": "^18.1.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.13"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}
