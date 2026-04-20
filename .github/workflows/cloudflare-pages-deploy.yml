@@ -21,6 +21,13 @@ on:
         description: 'Commands to run before build'
         required: false
         type: string
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      DOTENV_PRIVATE_KEY_DEVELOPMENT:
+        required: false
+      DOTENV_PRIVATE_KEY_PRODUCTION:
+        required: false
 
 permissions:
   contents: read

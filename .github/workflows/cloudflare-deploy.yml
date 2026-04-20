@@ -27,6 +27,13 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      DOTENV_PRIVATE_KEY_DEVELOPMENT:
+        required: false
+      DOTENV_PRIVATE_KEY_PRODUCTION:
+        required: false
 
 permissions:
   contents: read
@@ -43,7 +50,6 @@ jobs:
     environment: ${{ github.event.pull_request.number == '' && (inputs.environment || 'production') || '' }}
 
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
       IS_PREVIEW: ${{ github.event.pull_request.number != '' }}

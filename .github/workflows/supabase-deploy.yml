@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: '.'
+    secrets:
+      DOTENV_PRIVATE_KEY_DEVELOPMENT:
+        required: false
+      DOTENV_PRIVATE_KEY_PRODUCTION:
+        required: false
 
 permissions:
   contents: write
