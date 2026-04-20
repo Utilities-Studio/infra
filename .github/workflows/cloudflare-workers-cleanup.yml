@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   cleanup:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: github.event.pull_request.number != '' && github.event.action == 'closed'
     runs-on: ubuntu-latest
 
     steps:
@@ -16,15 +16,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cloudflare-workers-deploy -->';
+            const marker = '<!-- cf-workers-preview -->';
             const pr = context.payload.pull_request.number;
             const merged = context.payload.pull_request.merged;
+            const branch = context.payload.pull_request.head.ref;
 
             const body = [
               marker,
-              '### :gear: Cloudflare Workers',
+              `<h3>${merged ? 'Merged' : 'Closed'} <code>${branch}</code> -- ⚡ Cloudflare Workers</h3>`,
               '',
-              `Preview expired (PR ${merged ? 'merged' : 'closed'}). Worker versions auto-cleanup after 1000 versions.`,
+              `| | |`,
+              `|---|---|`,
+              `| **Status** | ${merged ? '🟣 Merged' : '⚫ Closed'} -- preview expired |`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({

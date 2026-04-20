@@ -39,17 +39,17 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: pages-${{ inputs.project_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'production' }}-${{ github.repository }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      group: cf-pages-${{ inputs.project_name }}-${{ github.event.pull_request.number || 'production' }}-${{ github.repository }}
+      cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
     environment:
-      name: ${{ github.event_name == 'pull_request' && format('preview-pr-{0}', github.event.pull_request.number) || 'production' }}
+      name: ${{ github.event.pull_request.number == '' && 'production' || '' }}
       url: ${{ steps.deploy.outputs.deployment-url }}
 
     env:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
-      DOTENV_PRIVATE_KEY_PRODUCTION: ${{ github.event_name != 'pull_request' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
-      IS_PREVIEW: ${{ github.event_name == 'pull_request' }}
+      DOTENV_PRIVATE_KEY_PRODUCTION: ${{ github.event.pull_request.number == '' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
+      IS_PREVIEW: ${{ github.event.pull_request.number != '' }}
 
     defaults:
       run:
@@ -58,26 +58,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || '' }}
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
 
       - name: Comment -- deploy started
-        if: github.event_name == 'pull_request'
+        if: env.IS_PREVIEW == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cloudflare-pages-deploy -->';
+            const marker = '<!-- cf-pages-preview -->';
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const branch = context.payload.pull_request.head.ref;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const body = [
               marker,
-              '### :cloud: Cloudflare Pages Deploy',
+              `<h3>Deploying <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
               '',
-              '| Status | Commit | Environment |',
-              '|--------|--------|-------------|',
-              `| :hourglass_flowing_sand: Building... | \`${sha}\` | preview |`,
+              `| | |`,
+              `|---|---|`,
+              `| **Latest commit** | \`${sha}\` |`,
+              `| **Status** | 🔨 Building... |`,
+              `| **Preview URL** | _Pending_ |`,
+              `| **Logs** | [View workflow](${runUrl}) |`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -105,36 +112,6 @@ jobs:
         env:
           CLOUDFLARE_ENV: ${{ env.IS_PREVIEW == 'true' && 'development' || 'production' }}
 
-      - name: Comment -- deploying
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const marker = '<!-- cloudflare-pages-deploy -->';
-            const pr = context.payload.pull_request.number;
-            const sha = context.payload.pull_request.head.sha.slice(0, 7);
-
-            const body = [
-              marker,
-              '### :cloud: Cloudflare Pages Deploy',
-              '',
-              '| Status | Commit | Environment |',
-              '|--------|--------|-------------|',
-              `| :rocket: Deploying... | \`${sha}\` | preview |`,
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: pr, per_page: 100,
-            });
-            const existing = comments.find(c => c.body?.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                comment_id: existing.id, body,
-              });
-            }
-
       - name: Deploy
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -146,27 +123,31 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Comment -- deploy succeeded
-        if: github.event_name == 'pull_request' && success()
+        if: env.IS_PREVIEW == 'true' && success()
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cloudflare-pages-deploy -->';
+            const marker = '<!-- cf-pages-preview -->';
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const branch = context.payload.pull_request.head.ref;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const url = '${{ steps.deploy.outputs.deployment-url }}';
             const aliasUrl = '${{ steps.deploy.outputs.pages-deployment-alias-url }}';
 
-            let links = `[Preview](${url})`;
-            if (aliasUrl && aliasUrl !== url) links += ` | [Alias](${aliasUrl})`;
+            const links = [url && `[Preview](${url})`, aliasUrl && aliasUrl !== url && `[Branch alias](${aliasUrl})`].filter(Boolean).join(' · ');
 
             const body = [
               marker,
-              '### :cloud: Cloudflare Pages Deploy',
+              `<h3>Deployed <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
               '',
-              '| Status | Commit | Environment | Links |',
-              '|--------|--------|-------------|-------|',
-              `| :white_check_mark: Live | \`${sha}\` | preview | ${links} |`,
-            ].join('\n');
+              `| | |`,
+              `|---|---|`,
+              `| **Latest commit** | \`${sha}\` |`,
+              `| **Status** | ✅ Deploy successful |`,
+              links ? `| **Preview URL** | ${links} |` : null,
+              `| **Logs** | [View workflow](${runUrl}) |`,
+            ].filter(Boolean).join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -181,24 +162,25 @@ jobs:
             }
 
       - name: Comment -- deploy failed
-        if: github.event_name == 'pull_request' && failure()
+        if: env.IS_PREVIEW == 'true' && failure()
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cloudflare-pages-deploy -->';
+            const marker = '<!-- cf-pages-preview -->';
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
-            const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+            const branch = context.payload.pull_request.head.ref;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const body = [
               marker,
-              '### :cloud: Cloudflare Pages Deploy',
+              `<h3>Failed to deploy <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
               '',
-              '| Status | Commit | Environment |',
-              '|--------|--------|-------------|',
-              `| :x: Failed | \`${sha}\` | preview |`,
-              '',
-              `[View logs](${runUrl})`,
+              `| | |`,
+              `|---|---|`,
+              `| **Latest commit** | \`${sha}\` |`,
+              `| **Status** | ❌ Deploy failed |`,
+              `| **Logs** | [View workflow](${runUrl}) |`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
