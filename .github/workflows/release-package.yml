@@ -10,9 +10,16 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: 'Package to release (leave empty to auto-detect)'
-        required: false
-        type: string
+        description: 'Package to release (comma-separated or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - sync-env
+          - env-local
+          - vite-env
+          - stripe-sync
 
 permissions:
   contents: write
@@ -35,8 +42,10 @@ jobs:
       - name: Detect changed packages
         id: changed
         run: |
-          if [ -n "${{ inputs.package }}" ]; then
-            CHANGED=$(echo '["${{ inputs.package }}"]')
+          if [ "${{ inputs.package }}" == "all" ]; then
+            CHANGED='["sync-env","env-local","vite-env","stripe-sync"]'
+          elif [ -n "${{ inputs.package }}" ]; then
+            CHANGED='["${{ inputs.package }}"]'
           else
             PARENT=$(git rev-parse HEAD~1 2>/dev/null || git hash-object -t tree /dev/null)
             CHANGED=$(git diff --name-only "$PARENT" HEAD -- packages/ | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
