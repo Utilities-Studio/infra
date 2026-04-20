@@ -43,6 +43,7 @@ jobs:
     environment: ${{ github.event_name != 'pull_request' && (inputs.environment || 'production') || '' }}
 
     env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
       IS_PREVIEW: ${{ github.event_name == 'pull_request' }}
