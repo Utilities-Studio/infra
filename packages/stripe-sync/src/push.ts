@@ -1,6 +1,6 @@
 import type Stripe from 'stripe'
 
-import type { PriceConfig, ProductConfig, StripeConfig } from './types.ts'
+import type { ProductConfig, StripeConfig } from './types.ts'
 
 function formatAmount(amount: number): string {
 	const dollars = amount / 100
@@ -10,7 +10,7 @@ function formatAmount(amount: number): string {
 function buildMarketingFeatures(
 	product: ProductConfig,
 ): Stripe.ProductCreateParams.MarketingFeature[] {
-	return product.features.map((name) => ({ name }))
+	return (product.features ?? []).map((name) => ({ name }))
 }
 
 function metadataChanged(
@@ -59,7 +59,7 @@ async function syncPrices(
 					currency: 'usd',
 					lookup_key: priceConfig.lookup_key,
 					product: productId,
-					recurring: { interval: priceConfig.interval },
+					recurring: { interval: priceConfig.interval! },
 					transfer_lookup_key: true,
 					unit_amount: priceConfig.amount,
 				}
@@ -106,7 +106,7 @@ async function syncProduct(
 	dryRun: boolean,
 ): Promise<void> {
 	const existing = existingProducts.find((p) => p.name === productConfig.name)
-	const { metadata } = productConfig
+	const metadata = productConfig.metadata ?? {}
 	const marketingFeatures = buildMarketingFeatures(productConfig)
 
 	if (existing) {
@@ -179,7 +179,7 @@ async function syncProduct(
 					currency: 'usd',
 					lookup_key: price.lookup_key,
 					product: product.id,
-					recurring: { interval: price.interval },
+					recurring: { interval: price.interval! },
 					transfer_lookup_key: true,
 					unit_amount: price.amount,
 				}
@@ -196,46 +196,19 @@ async function syncProduct(
 	console.log(`  + Created: ${productConfig.name} (${priceStr || 'free'})`)
 }
 
-function parseConfig(config: StripeConfig): {
-	creditPacks: ProductConfig[]
-	subscriptions: ProductConfig[]
-} {
-	const subscriptions: ProductConfig[] = config.subscriptionProducts.map(
-		(p) => ({
-			description: p.description,
-			features: p.features,
-			metadata: {
-				...p.metadata,
-				display_order: String(p.displayOrder),
-				highlighted: String(p.highlighted),
-				product_type: 'subscription',
-			},
-			name: p.name,
-			prices: p.prices.map((pr) => ({
-				amount: pr.amount,
-				interval: pr.interval,
-				lookup_key: pr.lookupKey,
-			})),
-		}),
-	)
-
-	const creditPacks: ProductConfig[] = config.creditPackProducts.map((p) => ({
+function parseConfig(config: StripeConfig): ProductConfig[] {
+	return config.products.map((p) => ({
 		description: p.description,
-		features: [],
-		metadata: {
-			...p.metadata,
-			product_type: 'credit_pack',
-		},
+		features: p.features,
+		metadata: p.metadata,
 		name: p.name,
 		prices: p.prices.map((pr) => ({
 			amount: pr.amount,
 			interval: pr.interval,
 			lookup_key: pr.lookupKey,
-			one_time: true,
+			one_time: pr.oneTime,
 		})),
 	}))
-
-	return { creditPacks, subscriptions }
 }
 
 export async function push(
@@ -244,7 +217,7 @@ export async function push(
 	dryRun: boolean,
 ): Promise<void> {
 	const config: StripeConfig = await Bun.file(configPath).json()
-	const { creditPacks, subscriptions } = parseConfig(config)
+	const products = parseConfig(config)
 
 	if (dryRun) console.log('DRY RUN -- no changes will be made\n')
 
@@ -253,16 +226,8 @@ export async function push(
 	const allProducts = await stripe.products.list({ limit: 100 })
 	const existingProducts = allProducts.data
 
-	console.log('Subscription products:')
-	for (const product of subscriptions) {
+	for (const product of products) {
 		await syncProduct(stripe, product, existingProducts, dryRun)
-	}
-
-	if (creditPacks.length > 0) {
-		console.log('\nCredit packs:')
-		for (const product of creditPacks) {
-			await syncProduct(stripe, product, existingProducts, dryRun)
-		}
 	}
 
 	console.log('\nDone!')

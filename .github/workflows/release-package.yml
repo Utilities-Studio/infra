@@ -7,6 +7,12 @@ on:
     paths:
       - 'packages/*/src/**'
       - 'packages/*/package.json'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to release (leave empty to auto-detect)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -29,7 +35,12 @@ jobs:
       - name: Detect changed packages
         id: changed
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD -- packages/ | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ -n "${{ inputs.package }}" ]; then
+            CHANGED=$(echo '["${{ inputs.package }}"]')
+          else
+            PARENT=$(git rev-parse HEAD~1 2>/dev/null || git hash-object -t tree /dev/null)
+            CHANGED=$(git diff --name-only "$PARENT" HEAD -- packages/ | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          fi
           echo "packages=$CHANGED" >> $GITHUB_OUTPUT
           echo "Changed packages: $CHANGED"
 
