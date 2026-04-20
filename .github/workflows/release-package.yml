@@ -106,8 +106,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          git add package.json
-          git commit -m "release: ${PACKAGE_NAME} ${{ steps.version.outputs.version }}"
           git tag "${{ matrix.package }}-${{ steps.version.outputs.version }}"
-          git push origin main --tags
+          git push origin "${{ matrix.package }}-${{ steps.version.outputs.version }}"
