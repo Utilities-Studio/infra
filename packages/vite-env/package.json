@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/vite-env",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Generate vite-env.d.ts type declarations from VITE_ environment variables",
 	"type": "module",
 	"bin": {
