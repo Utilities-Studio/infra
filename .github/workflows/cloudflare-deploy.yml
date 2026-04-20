@@ -40,8 +40,7 @@ jobs:
       group: cloudflare-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || inputs.environment || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-    environment:
-      name: ${{ github.event_name == 'pull_request' && format('preview-pr-{0}', github.event.pull_request.number) || inputs.environment || 'production' }}
+    environment: ${{ github.event_name != 'pull_request' && (inputs.environment || 'production') || '' }}
 
     env:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
