@@ -4,9 +4,10 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Environment to deploy'
-        required: true
+        description: 'Wrangler environment (optional -- omit for single-env projects)'
+        required: false
         type: string
+        default: ''
       working_directory:
         description: 'Working directory for the project'
         required: false
@@ -36,17 +37,17 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: cloudflare-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || inputs.environment }}-${{ github.repository }}
+      group: cloudflare-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || inputs.environment || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
     environment:
-      name: ${{ github.event_name == 'pull_request' && format('preview-pr-{0}', github.event.pull_request.number) || inputs.environment }}
+      name: ${{ github.event_name == 'pull_request' && format('preview-pr-{0}', github.event.pull_request.number) || inputs.environment || 'production' }}
 
     env:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
       IS_PREVIEW: ${{ github.event_name == 'pull_request' }}
-      DEPLOY_ENV: ${{ github.event_name == 'pull_request' && 'development' || inputs.environment }}
+      HAS_ENV: ${{ inputs.environment != '' }}
 
     defaults:
       run:
@@ -72,9 +73,9 @@ jobs:
               marker,
               '### :gear: Cloudflare Workers Preview',
               '',
-              '| Status | Commit | Environment |',
-              '|--------|--------|-------------|',
-              `| :hourglass_flowing_sand: Building... | \`${sha}\` | development |`,
+              '| Status | Commit |',
+              '|--------|--------|',
+              `| :hourglass_flowing_sand: Building... | \`${sha}\` |`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -95,7 +96,7 @@ jobs:
 
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env }}
-        run: bunx @utilities-studio/sync-env@latest cloudflare --env ${{ env.DEPLOY_ENV }}
+        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ env.HAS_ENV == 'true' && format('--env {0}', inputs.environment) || '' }}
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
@@ -103,16 +104,16 @@ jobs:
 
       - name: Build
         if: ${{ !inputs.skip_build }}
-        run: bun run build -- --mode ${{ env.DEPLOY_ENV }}
+        run: bun run build ${{ env.HAS_ENV == 'true' && format('-- --mode {0}', env.IS_PREVIEW == 'true' && 'development' || inputs.environment) || '' }}
         env:
-          CLOUDFLARE_ENV: ${{ env.DEPLOY_ENV }}
+          CLOUDFLARE_ENV: ${{ env.HAS_ENV == 'true' && (env.IS_PREVIEW == 'true' && 'development' || inputs.environment) || '' }}
 
-      - name: Deploy (production)
+      - name: Deploy
         if: env.IS_PREVIEW != 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy --env ${{ env.DEPLOY_ENV }}
+          command: deploy ${{ env.HAS_ENV == 'true' && format('--env {0}', inputs.environment) || '' }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
 
@@ -122,7 +123,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: versions upload --env ${{ env.DEPLOY_ENV }} --preview-alias pr-${{ github.event.pull_request.number }}
+          command: versions upload ${{ env.HAS_ENV == 'true' && '--env development' || '' }} --preview-alias pr-${{ github.event.pull_request.number }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
 
@@ -136,19 +137,17 @@ jobs:
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const output = `${{ steps.preview.outputs.command-output }}`;
 
-            // Extract preview URL from wrangler output
-            const urlMatch = output.match(/(https:\/\/pr-\d+[^\s]+\.workers\.dev)/);
+            const urlMatch = output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
             const previewUrl = urlMatch ? urlMatch[1] : null;
-
             let links = previewUrl ? `[Preview](${previewUrl})` : 'uploaded';
 
             const body = [
               marker,
               '### :gear: Cloudflare Workers Preview',
               '',
-              '| Status | Commit | Environment | Links |',
-              '|--------|--------|-------------|-------|',
-              `| :white_check_mark: Live | \`${sha}\` | development | ${links} |`,
+              '| Status | Commit | Links |',
+              '|--------|--------|-------|',
+              `| :white_check_mark: Live | \`${sha}\` | ${links} |`,
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -177,9 +176,9 @@ jobs:
               marker,
               '### :gear: Cloudflare Workers Preview',
               '',
-              '| Status | Commit | Environment |',
-              '|--------|--------|-------------|',
-              `| :x: Failed | \`${sha}\` | development |`,
+              '| Status | Commit |',
+              '|--------|--------|',
+              `| :x: Failed | \`${sha}\` |`,
               '',
               `[View logs](${runUrl})`,
             ].join('\n');
