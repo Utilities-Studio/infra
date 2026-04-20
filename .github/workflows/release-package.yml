@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: 'Package to release (comma-separated or "all")'
+        description: 'Package to release'
         required: true
         default: 'all'
         type: choice
@@ -78,7 +78,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
