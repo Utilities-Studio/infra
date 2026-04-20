@@ -84,7 +84,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>Deploying <code>${branch}</code> with ⚡ Cloudflare Workers</h3>`,
+              `### Deploying \`${branch}\` with ⚡ Cloudflare Workers`,
               '',
               `| | |`,
               `|---|---|`,
@@ -155,12 +155,12 @@ jobs:
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const output = `${{ steps.preview.outputs.command-output }}`;
 
-            const urlMatch = output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
+            const urlMatch = output.match(/(?:Preview URL|Alias URL|https):?\s*(https:\/\/[^\s]+\.workers\.dev)/i) || output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
             const previewUrl = urlMatch ? urlMatch[1] : null;
 
             const body = [
               marker,
-              `<h3>Deployed <code>${branch}</code> with ⚡ Cloudflare Workers</h3>`,
+              `### Deployed \`${branch}\` with ⚡ Cloudflare Workers`,
               '',
               `| | |`,
               `|---|---|`,
@@ -195,7 +195,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>Failed to deploy <code>${branch}</code> with ⚡ Cloudflare Workers</h3>`,
+              `### Failed to deploy \`${branch}\` with ⚡ Cloudflare Workers`,
               '',
               `| | |`,
               `|---|---|`,

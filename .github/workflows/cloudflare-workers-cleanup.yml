@@ -23,7 +23,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>${merged ? 'Merged' : 'Closed'} <code>${branch}</code> -- ⚡ Cloudflare Workers</h3>`,
+              `### ${merged ? 'Merged' : 'Closed'} \`${branch}\` -- ⚡ Cloudflare Workers`,
               '',
               `| | |`,
               `|---|---|`,

@@ -70,7 +70,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>${merged ? 'Merged' : 'Closed'} <code>${branch}</code> -- ☁️ Cloudflare Pages</h3>`,
+              `### ${merged ? 'Merged' : 'Closed'} \`${branch}\` -- ☁️ Cloudflare Pages`,
               '',
               `| | |`,
               `|---|---|`,

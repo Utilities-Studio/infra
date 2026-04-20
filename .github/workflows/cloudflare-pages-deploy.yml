@@ -77,7 +77,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>Deploying <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
+              `### Deploying \`${branch}\` with ☁️ Cloudflare Pages`,
               '',
               `| | |`,
               `|---|---|`,
@@ -139,7 +139,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>Deployed <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
+              `### Deployed \`${branch}\` with ☁️ Cloudflare Pages`,
               '',
               `| | |`,
               `|---|---|`,
@@ -174,7 +174,7 @@ jobs:
 
             const body = [
               marker,
-              `<h3>Failed to deploy <code>${branch}</code> with ☁️ Cloudflare Pages</h3>`,
+              `### Failed to deploy \`${branch}\` with ☁️ Cloudflare Pages`,
               '',
               `| | |`,
               `|---|---|`,
