@@ -125,6 +125,8 @@ jobs:
           command: versions upload ${{ env.HAS_ENV == 'true' && '--env development' || '' }} --preview-alias pr-${{ github.event.pull_request.number }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Comment -- preview live
         if: github.event_name == 'pull_request' && success()
