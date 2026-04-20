@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Wrangler environment (optional -- omit for single-env projects)'
+        description: 'Wrangler environment (omit for single-env projects)'
         required: false
         type: string
         default: ''
@@ -14,7 +14,7 @@ on:
         type: string
         default: '.'
       pre_deploy_commands:
-        description: 'Commands to run before build (e.g. remove files)'
+        description: 'Commands to run before build'
         required: false
         type: string
       skip_build:
@@ -37,17 +37,19 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: cloudflare-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || inputs.environment || 'production' }}-${{ github.repository }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      group: cf-workers-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
+      cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
-    environment: ${{ github.event_name != 'pull_request' && (inputs.environment || 'production') || '' }}
+    environment: ${{ github.event.pull_request.number == '' && (inputs.environment || 'production') || '' }}
 
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
-      IS_PREVIEW: ${{ github.event_name == 'pull_request' }}
-      HAS_ENV: ${{ inputs.environment != '' }}
+      IS_PREVIEW: ${{ github.event.pull_request.number != '' }}
+      ENV_FLAG: ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }}
+      PREVIEW_ENV_FLAG: ${{ inputs.environment != '' && '--env development' || '' }}
+      MODE_FLAG: ${{ inputs.environment != '' && format('-- --mode {0}', inputs.environment) || '' }}
 
     defaults:
       run:
@@ -56,12 +58,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || '' }}
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
 
       - name: Comment -- deploy started
-        if: github.event_name == 'pull_request'
+        if: env.IS_PREVIEW == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -96,7 +100,7 @@ jobs:
 
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env }}
-        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ env.HAS_ENV == 'true' && format('--env {0}', inputs.environment) || '' }}
+        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ env.ENV_FLAG }}
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
@@ -104,16 +108,16 @@ jobs:
 
       - name: Build
         if: ${{ !inputs.skip_build }}
-        run: bun run build ${{ env.HAS_ENV == 'true' && format('-- --mode {0}', env.IS_PREVIEW == 'true' && 'development' || inputs.environment) || '' }}
+        run: bun run build ${{ env.MODE_FLAG }}
         env:
-          CLOUDFLARE_ENV: ${{ env.HAS_ENV == 'true' && (env.IS_PREVIEW == 'true' && 'development' || inputs.environment) || '' }}
+          CLOUDFLARE_ENV: ${{ inputs.environment }}
 
       - name: Deploy
         if: env.IS_PREVIEW != 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy ${{ env.HAS_ENV == 'true' && format('--env {0}', inputs.environment) || '' }}
+          command: deploy ${{ env.ENV_FLAG }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
 
@@ -123,14 +127,12 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: versions upload ${{ env.HAS_ENV == 'true' && '--env development' || '' }} --preview-alias pr-${{ github.event.pull_request.number }}
+          command: versions upload ${{ env.PREVIEW_ENV_FLAG }} --preview-alias pr-${{ github.event.pull_request.number }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Comment -- preview live
-        if: github.event_name == 'pull_request' && success()
+        if: env.IS_PREVIEW == 'true' && success()
         uses: actions/github-script@v7
         with:
           script: |
@@ -141,7 +143,7 @@ jobs:
 
             const urlMatch = output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
             const previewUrl = urlMatch ? urlMatch[1] : null;
-            let links = previewUrl ? `[Preview](${previewUrl})` : 'uploaded';
+            const links = previewUrl ? `[Preview](${previewUrl})` : 'uploaded';
 
             const body = [
               marker,
@@ -165,7 +167,7 @@ jobs:
             }
 
       - name: Comment -- deploy failed
-        if: github.event_name == 'pull_request' && failure()
+        if: env.IS_PREVIEW == 'true' && failure()
         uses: actions/github-script@v7
         with:
           script: |
