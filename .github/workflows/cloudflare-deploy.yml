@@ -137,17 +137,32 @@ jobs:
         if: env.IS_PREVIEW == 'true'
         id: preview
         uses: cloudflare/wrangler-action@v3
+        env:
+          WRANGLER_OUTPUT_FILE_DIRECTORY: /tmp/wrangler-output
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: versions upload ${{ env.PREVIEW_ENV_FLAG }} --preview-alias pr-${{ github.event.pull_request.number }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
 
+      - name: Extract preview URL
+        if: env.IS_PREVIEW == 'true' && success()
+        id: preview-url
+        run: |
+          URL=""
+          if [ -d /tmp/wrangler-output ]; then
+            for f in /tmp/wrangler-output/*.json; do
+              URL=$(cat "$f" 2>/dev/null | grep -oP '"(?:version_preview_url|preview_url|alias_url)"\s*:\s*"\K[^"]+' | head -1)
+              [ -n "$URL" ] && break
+            done
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: Comment -- preview live
         if: env.IS_PREVIEW == 'true' && success()
         uses: actions/github-script@v7
         env:
-          WRANGLER_OUTPUT: ${{ steps.preview.outputs.command-output }}
+          PREVIEW_URL: ${{ steps.preview-url.outputs.url }}
         with:
           script: |
             const marker = '<!-- cf-workers-preview -->';
@@ -155,10 +170,7 @@ jobs:
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const branch = context.payload.pull_request.head.ref;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const output = process.env.WRANGLER_OUTPUT || '';
-
-            const urlMatch = output.match(/(?:Preview URL|Alias URL|https):?\s*(https:\/\/[^\s]+\.workers\.dev)/i) || output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
-            const previewUrl = urlMatch ? urlMatch[1] : null;
+            const previewUrl = process.env.PREVIEW_URL || null;
 
             const body = [
               marker,
