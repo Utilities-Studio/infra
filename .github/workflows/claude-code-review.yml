@@ -1,17 +1,17 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    paths:
-      - 'src/**'
-      - 'supabase/migrations/**'
-      - 'supabase/functions/**'
-      - 'supabase/emails/**'
+  workflow_call:
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
 
-concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
 
 jobs:
   claude-review:
@@ -24,6 +24,10 @@ jobs:
       issues: write
       id-token: write
       actions: read
+
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout repository
@@ -110,9 +114,6 @@ jobs:
             console.log(`Minimized ${claudeInline.length} old inline comments`);
 
             // Resolve review threads that contain our old comments.
-            // Minimizing a comment does NOT resolve its conversation thread -- these
-            // are separate concepts in GitHub. Fetch threads via GraphQL and resolve
-            // any whose comments are all minimized or all authored by the claude bot.
             if (claudeInline.length > 0) {
               try {
                 const claudeCommentIds = new Set(claudeInline.map(c => c.node_id));
@@ -145,8 +146,6 @@ jobs:
                   for (const thread of threads.nodes) {
                     if (thread.isResolved) continue;
                     const comments = thread.comments.nodes;
-                    // Resolve if thread contains any of our claude comments and
-                    // every comment in the thread is either ours or already minimized
                     const hasClaudeComment = comments.some(c => claudeCommentIds.has(c.id));
                     const allHandled = comments.every(c =>
                       claudeCommentIds.has(c.id) || c.isMinimized
