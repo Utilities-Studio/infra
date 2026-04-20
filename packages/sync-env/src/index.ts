@@ -27,9 +27,6 @@ function isSecretKey(key: string): boolean {
 	)
 }
 
-async function parseEnvFile(path: string): Promise<Record<string, string>> {
-	return parse(await Bun.file(path).text())
-}
 
 async function run(cmd: string): Promise<{ ok: boolean; output: string }> {
 	const proc = Bun.spawn(['sh', '-c', cmd], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' })
@@ -186,10 +183,20 @@ async function main() {
 
 	const envVars: Record<string, Record<string, string>> = {}
 	for (const env of envs) {
-		envVars[env] = await parseEnvFile(join(ROOT, `.env.${env}`))
+		const envFile = Bun.file(join(ROOT, `.env.${env}`))
+		if (!(await envFile.exists())) {
+			console.log(`  .env.${env} not found, skipping`)
+			continue
+		}
+		envVars[env] = parse(await envFile.text())
 		console.log(
 			`  loaded .env.${env} (${Object.keys(envVars[env]).length} keys)`,
 		)
+	}
+
+	if (Object.keys(envVars).length === 0) {
+		console.log('\nNo env files found. Nothing to sync.')
+		return
 	}
 
 	if (targets.includes('cloudflare')) await syncCloudflare(envVars)
