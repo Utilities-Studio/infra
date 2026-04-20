@@ -137,8 +137,6 @@ jobs:
         if: env.IS_PREVIEW == 'true'
         id: preview
         uses: cloudflare/wrangler-action@v3
-        env:
-          WRANGLER_OUTPUT_FILE_DIRECTORY: /tmp/wrangler-output
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: versions upload ${{ env.PREVIEW_ENV_FLAG }} --preview-alias pr-${{ github.event.pull_request.number }}
@@ -149,13 +147,9 @@ jobs:
         if: env.IS_PREVIEW == 'true' && success()
         id: preview-url
         run: |
-          URL=""
-          if [ -d /tmp/wrangler-output ]; then
-            for f in /tmp/wrangler-output/*.json; do
-              URL=$(cat "$f" 2>/dev/null | grep -oP '"(?:version_preview_url|preview_url|alias_url)"\s*:\s*"\K[^"]+' | head -1)
-              [ -n "$URL" ] && break
-            done
-          fi
+          ALIAS_URL=$(echo "${{ steps.preview.outputs.command-output }}" | grep -oP 'Version Preview Alias URL: \K\S+' || true)
+          DEPLOY_URL="${{ steps.preview.outputs.deployment-url }}"
+          URL="${ALIAS_URL:-$DEPLOY_URL}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Comment -- preview live
