@@ -13,10 +13,10 @@ on:
         type: boolean
         default: true
       deploy_functions:
-        description: 'Deploy edge functions (changed/all/none)'
+        description: 'Deploy edge functions'
         required: false
-        type: string
-        default: 'changed'
+        type: boolean
+        default: true
       working_directory:
         description: 'Working directory for the project'
         required: false
@@ -39,8 +39,6 @@ jobs:
     env:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
-      DEPLOY_MIGRATIONS: ${{ inputs.deploy_migrations }}
-      DEPLOY_FUNCTIONS: ${{ inputs.deploy_functions }}
 
     defaults:
       run:
@@ -86,117 +84,14 @@ jobs:
         run: supabase config push --yes
 
       - name: Deploy database migrations
-        if: env.DEPLOY_MIGRATIONS == 'true'
+        if: inputs.deploy_migrations
         run: supabase db push --include-all --yes
 
-      - name: Get last deployment tag
-        id: last-deploy
-        env:
-          DEPLOY_ENV: ${{ inputs.environment }}
-        run: |
-          NEW_TAG=$(git tag -l "supabase-deploy-${DEPLOY_ENV}-*" --sort=-version:refname | head -n 1)
-          OLD_TAG=$(git tag -l "supabase-deploy-[0-9]*" --sort=-version:refname | head -n 1)
-
-          if [ -n "$NEW_TAG" ]; then
-            LAST_TAG="$NEW_TAG"
-          elif [ -n "$OLD_TAG" ]; then
-            LAST_TAG="$OLD_TAG"
-            echo "Using legacy tag format (will migrate on next deploy)"
-          fi
-
-          if [ -z "$LAST_TAG" ]; then
-            echo "No previous deployment tag found"
-            echo "first_deploy=true" >> $GITHUB_OUTPUT
-          else
-            echo "Last deployment: $LAST_TAG"
-            echo "base_sha=$(git rev-parse $LAST_TAG)" >> $GITHUB_OUTPUT
-            echo "first_deploy=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Detect changed files
-        id: changed
-        if: env.DEPLOY_FUNCTIONS == 'changed' && steps.last-deploy.outputs.first_deploy != 'true'
-        uses: tj-actions/changed-files@v47
-        with:
-          base_sha: ${{ steps.last-deploy.outputs.base_sha }}
-          files: supabase/functions/**
-          dir_names: true
-          dir_names_max_depth: 3
-
-      - name: Get functions to deploy
-        id: functions
-        if: env.DEPLOY_FUNCTIONS != 'none'
-        run: |
-          FUNCTIONS_DIR="supabase/functions"
-          FUNCTIONS_TO_DEPLOY=""
-
-          if [ "$DEPLOY_FUNCTIONS" == "all" ] || [ "${{ steps.last-deploy.outputs.first_deploy }}" == "true" ]; then
-            echo "Deploying all functions..."
-            for dir in "$FUNCTIONS_DIR"/*/; do
-              func_name=$(basename "$dir")
-              if [ "$func_name" != "_shared" ]; then
-                FUNCTIONS_TO_DEPLOY="$FUNCTIONS_TO_DEPLOY $func_name"
-              fi
-            done
-          else
-            CHANGED="${{ steps.changed.outputs.all_changed_files }}"
-            echo "Changed paths: $CHANGED"
-
-            SHARED_CHANGED="false"
-
-            for path in $CHANGED; do
-              if [[ "$path" == *"_shared"* ]]; then
-                SHARED_CHANGED="true"
-                echo "_shared changed -- will deploy all functions"
-                break
-              fi
-            done
-
-            if [ "$SHARED_CHANGED" == "true" ]; then
-              for dir in "$FUNCTIONS_DIR"/*/; do
-                func_name=$(basename "$dir")
-                if [ "$func_name" != "_shared" ]; then
-                  FUNCTIONS_TO_DEPLOY="$FUNCTIONS_TO_DEPLOY $func_name"
-                fi
-              done
-            else
-              for path in $CHANGED; do
-                func_name=$(echo "$path" | sed -n 's|supabase/functions/\([^/]*\).*|\1|p')
-                if [ -n "$func_name" ] && [ "$func_name" != "_shared" ]; then
-                  if [[ ! " $FUNCTIONS_TO_DEPLOY " =~ " $func_name " ]]; then
-                    FUNCTIONS_TO_DEPLOY="$FUNCTIONS_TO_DEPLOY $func_name"
-                  fi
-                fi
-              done
-            fi
-          fi
-
-          FUNCTIONS_TO_DEPLOY=$(echo "$FUNCTIONS_TO_DEPLOY" | xargs)
-          echo "Functions to deploy: $FUNCTIONS_TO_DEPLOY"
-          echo "functions=$FUNCTIONS_TO_DEPLOY" >> $GITHUB_OUTPUT
-
       - name: Deploy edge functions
-        if: env.DEPLOY_FUNCTIONS != 'none' && steps.functions.outputs.functions != ''
-        run: |
-          FUNCTIONS="${{ steps.functions.outputs.functions }}"
-
-          if [ -z "$FUNCTIONS" ]; then
-            echo "No functions to deploy"
-            exit 0
-          fi
-
-          for func in $FUNCTIONS; do
-            VERIFY_JWT=$(grep -A5 "\[functions\.$func\]" supabase/config.toml | grep "verify_jwt" | head -1 | tr -d ' ')
-            FLAGS=""
-            if [ "$VERIFY_JWT" = "verify_jwt=false" ]; then
-              FLAGS="--no-verify-jwt"
-            fi
-            echo "Deploying $func... $FLAGS"
-            supabase functions deploy "$func" $FLAGS
-          done
+        if: inputs.deploy_functions
+        run: supabase functions deploy
 
       - name: Tag deployment
-        if: env.DEPLOY_FUNCTIONS != 'none' || env.DEPLOY_MIGRATIONS == 'true'
         env:
           DEPLOY_ENV: ${{ inputs.environment }}
         run: |
