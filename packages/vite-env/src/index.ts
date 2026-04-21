@@ -3,10 +3,17 @@ import { join } from 'node:path'
 
 const ROOT = process.cwd()
 const OUT_FILE = join(ROOT, 'src', 'vite-env.d.ts')
-const ENV_FILE = join(ROOT, '.env.development')
+const ENV_DEV = join(ROOT, '.env.development')
+const ENV_ROOT = join(ROOT, '.env')
 
-if (!(await Bun.file(ENV_FILE).exists())) {
-	console.log('Skipping vite-env generation (.env.development not found)')
+const envFile = (await Bun.file(ENV_DEV).exists())
+	? ENV_DEV
+	: (await Bun.file(ENV_ROOT).exists())
+		? ENV_ROOT
+		: null
+
+if (!envFile) {
+	console.log('Skipping vite-env generation (no .env.development or .env found)')
 	process.exit(0)
 }
 
