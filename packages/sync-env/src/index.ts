@@ -114,19 +114,31 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 	console.log('\n── Cloudflare ──────────────────────────────────────\n')
 
 	const wranglerPath = join(ROOT, 'wrangler.jsonc')
-	const wrangler = parseJsonc(await Bun.file(wranglerPath).text()) as {
-		env: Record<string, { vars?: Record<string, string> }>
-	}
+	const wrangler = parseJsonc(await Bun.file(wranglerPath).text()) as Record<string, unknown>
+
+	const isRoot = 'root' in envVars
 
 	console.log('  vars (wrangler.jsonc):')
-	for (const [env, allVars] of Object.entries(envVars)) {
+	if (isRoot) {
 		const vars: Record<string, string> = {}
-		for (const [key, value] of Object.entries(allVars)) {
+		for (const [key, value] of Object.entries(envVars['root'])) {
 			if (!value || CF_SKIP_KEYS.has(key) || isSecretKey(key)) continue
 			vars[key] = value
 		}
-		wrangler.env[env] = { ...wrangler.env[env], vars }
-		console.log(`    ${env}: ${Object.keys(vars).length} vars`)
+		;(wrangler as Record<string, unknown>).vars = vars
+		console.log(`    root: ${Object.keys(vars).length} vars`)
+	} else {
+		const envBlock = (wrangler.env ?? {}) as Record<string, { vars?: Record<string, string> }>
+		for (const [env, allVars] of Object.entries(envVars)) {
+			const vars: Record<string, string> = {}
+			for (const [key, value] of Object.entries(allVars)) {
+				if (!value || CF_SKIP_KEYS.has(key) || isSecretKey(key)) continue
+				vars[key] = value
+			}
+			envBlock[env] = { ...envBlock[env], vars }
+			console.log(`    ${env}: ${Object.keys(vars).length} vars`)
+		}
+		wrangler.env = envBlock
 	}
 
 	await Bun.write(wranglerPath, JSON.stringify(wrangler, null, '\t') + '\n')
@@ -148,8 +160,9 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 		const tmpFile = join(ROOT, `.cf-secrets-${env}.json`)
 		await Bun.write(tmpFile, JSON.stringify(secrets))
 
+		const envFlag = env === 'root' ? '' : ` --env ${env}`
 		const { ok, output } = await run(
-			`bunx wrangler versions secret bulk ${tmpFile} --env ${env}`,
+			`bunx wrangler versions secret bulk ${tmpFile}${envFlag}`,
 		)
 
 		const { unlink } = await import('node:fs/promises')
