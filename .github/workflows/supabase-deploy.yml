@@ -4,9 +4,10 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Environment to deploy'
-        required: true
+        description: 'Environment to deploy (omit for single-env projects)'
+        required: false
         type: string
+        default: ''
       deploy_migrations:
         description: 'Deploy database migrations'
         required: false
@@ -27,6 +28,8 @@ on:
         required: false
       DOTENV_PRIVATE_KEY_PRODUCTION:
         required: false
+      DOTENV_PRIVATE_KEY:
+        required: false
 
 permissions:
   contents: write
@@ -36,14 +39,15 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: supabase-deploy-${{ inputs.environment }}-${{ github.repository }}
+      group: supabase-deploy-${{ inputs.environment || 'default' }}-${{ github.repository }}
       cancel-in-progress: false
 
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.environment || 'production' }}
 
     env:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
+      DOTENV_PRIVATE_KEY: ${{ inputs.environment == '' && secrets.DOTENV_PRIVATE_KEY || '' }}
 
     defaults:
       run:
@@ -61,6 +65,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Resolve env file
+        id: env-file
+        run: |
+          if [ -n "${{ inputs.environment }}" ]; then
+            FILE=".env.${{ inputs.environment }}"
+          elif [ -f .env ]; then
+            FILE=".env"
+          else
+            echo "Error: No env file found (no environment input and no .env)" && exit 1
+          fi
+          if [ ! -f "$FILE" ]; then
+            echo "Error: $FILE not found" && exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+
       - name: Load env vars
         run: |
           while IFS= read -r line; do
@@ -72,7 +91,7 @@ jobs:
             [[ "$key" =~ ^(DOTENV_|NODE_OPTIONS|VITE_) ]] && continue
             echo "::add-mask::$value"
             echo "$key=$value" >> "$GITHUB_ENV"
-          done < .env.${{ inputs.environment }}
+          done < ${{ steps.env-file.outputs.path }}
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -83,7 +102,7 @@ jobs:
         run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_ID }}
 
       - name: Sync edge function secrets
-        run: bunx @utilities-studio/sync-env@latest supabase --env ${{ inputs.environment }}
+        run: bunx @utilities-studio/sync-env@latest supabase ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }}
 
       - name: Push project config
         run: supabase config push --yes
@@ -102,6 +121,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          TAG="supabase-deploy-${DEPLOY_ENV}-$(date -u +%Y%m%d-%H%M%S)"
+          SUFFIX="${DEPLOY_ENV:+${DEPLOY_ENV}-}"
+          TAG="supabase-deploy-${SUFFIX}$(date -u +%Y%m%d-%H%M%S)"
           git tag "$TAG"
           git push origin "$TAG"
