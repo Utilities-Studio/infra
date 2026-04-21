@@ -28,6 +28,8 @@ on:
         required: false
       DOTENV_PRIVATE_KEY_PRODUCTION:
         required: false
+      DOTENV_PRIVATE_KEY:
+        required: false
 
 permissions:
   contents: read
@@ -47,8 +49,6 @@ jobs:
       url: ${{ steps.deploy.outputs.deployment-url }}
 
     env:
-      DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
-      DOTENV_PRIVATE_KEY_PRODUCTION: ${{ github.event.pull_request.number == '' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
       IS_PREVIEW: ${{ github.event.pull_request.number != '' }}
 
     defaults:
@@ -60,6 +60,17 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || '' }}
+
+      - name: Detect env tier
+        id: env-tier
+        run: |
+          if [ -f .env.development ] || [ -f .env.production ]; then
+            echo "tier=multi" >> "$GITHUB_OUTPUT"
+          elif [ -f .env ]; then
+            echo "tier=single" >> "$GITHUB_OUTPUT"
+          else
+            echo "tier=none" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
@@ -107,10 +118,28 @@ jobs:
         if: inputs.pre_deploy_commands != ''
         run: ${{ inputs.pre_deploy_commands }}
 
+      - name: Compute build mode
+        id: build-mode
+        run: |
+          TIER="${{ steps.env-tier.outputs.tier }}"
+          IS_PREVIEW="${{ env.IS_PREVIEW }}"
+          if [ "$TIER" = "multi" ]; then
+            if [ "$IS_PREVIEW" = "true" ]; then
+              echo "mode=development" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=production" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "mode=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build
-        run: bun run build -- --mode ${{ env.IS_PREVIEW == 'true' && 'development' || 'production' }}
+        run: bun run build ${{ steps.build-mode.outputs.mode != '' && format('-- --mode {0}', steps.build-mode.outputs.mode) || '' }}
         env:
-          CLOUDFLARE_ENV: ${{ env.IS_PREVIEW == 'true' && 'development' || 'production' }}
+          CLOUDFLARE_ENV: ${{ steps.build-mode.outputs.mode }}
+          DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
+          DOTENV_PRIVATE_KEY_PRODUCTION: ${{ env.IS_PREVIEW != 'true' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
+          DOTENV_PRIVATE_KEY: ${{ steps.env-tier.outputs.tier == 'single' && secrets.DOTENV_PRIVATE_KEY || '' }}
 
       - name: Deploy
         id: deploy
