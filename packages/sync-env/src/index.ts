@@ -12,6 +12,45 @@ const ROOT = process.cwd()
 const ENVIRONMENTS = ['development', 'production'] as const
 type Environment = (typeof ENVIRONMENTS)[number]
 
+type EnvTier = 'multi' | 'single' | 'none'
+
+async function detectTier(): Promise<EnvTier> {
+	const hasDev = await Bun.file(join(ROOT, '.env.development')).exists()
+	const hasProd = await Bun.file(join(ROOT, '.env.production')).exists()
+	if (hasDev || hasProd) return 'multi'
+	if (await Bun.file(join(ROOT, '.env')).exists()) return 'single'
+	return 'none'
+}
+
+async function loadEnvFiles(
+	tier: EnvTier,
+	requestedEnvs: Environment[],
+): Promise<Record<string, Record<string, string>>> {
+	const envVars: Record<string, Record<string, string>> = {}
+
+	if (tier === 'none') return envVars
+
+	if (tier === 'single') {
+		const envFile = Bun.file(join(ROOT, '.env'))
+		if (!(await envFile.exists())) return envVars
+		envVars['root'] = parse(await envFile.text())
+		console.log(`  loaded .env (${Object.keys(envVars['root']).length} keys)`)
+		return envVars
+	}
+
+	for (const env of requestedEnvs) {
+		const envFile = Bun.file(join(ROOT, `.env.${env}`))
+		if (!(await envFile.exists())) {
+			console.log(`  .env.${env} not found, skipping`)
+			continue
+		}
+		envVars[env] = parse(await envFile.text())
+		console.log(`  loaded .env.${env} (${Object.keys(envVars[env]).length} keys)`)
+	}
+
+	return envVars
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -177,25 +216,31 @@ type Target = (typeof TARGETS)[number]
 
 async function main() {
 	const start = performance.now()
-	const { envs, targets } = parseArgs()
+	const { envs, targets, explicitEnv } = parseArgs()
+	const tier = explicitEnv ? 'multi' : await detectTier()
 
-	console.log(`Syncing env vars -> ${targets.join(', ')} (${envs.join(', ')})`)
+	console.log(`Env tier: ${tier}`)
+	console.log(`Syncing env vars -> ${targets.join(', ')}`)
 
-	const envVars: Record<string, Record<string, string>> = {}
-	for (const env of envs) {
-		const envFile = Bun.file(join(ROOT, `.env.${env}`))
-		if (!(await envFile.exists())) {
-			console.log(`  .env.${env} not found, skipping`)
-			continue
-		}
-		envVars[env] = parse(await envFile.text())
-		console.log(
-			`  loaded .env.${env} (${Object.keys(envVars[env]).length} keys)`,
-		)
+	if (tier === 'none') {
+		console.log('\nNo env files found. Nothing to sync.')
+		return
 	}
 
+	if (explicitEnv) {
+		for (const env of envs) {
+			const envFile = Bun.file(join(ROOT, `.env.${env}`))
+			if (!(await envFile.exists())) {
+				console.error(`Error: .env.${env} not found (--env ${env} was explicitly requested)`)
+				process.exit(1)
+			}
+		}
+	}
+
+	const envVars = await loadEnvFiles(tier, envs)
+
 	if (Object.keys(envVars).length === 0) {
-		console.log('\nNo env files found. Nothing to sync.')
+		console.log('\nNo env files loaded. Nothing to sync.')
 		return
 	}
 
@@ -206,7 +251,7 @@ async function main() {
 	console.log(`\nDone in ${elapsed}s.`)
 }
 
-function parseArgs(): { envs: Environment[]; targets: Target[] } {
+function parseArgs(): { envs: Environment[]; targets: Target[]; explicitEnv: boolean } {
 	const raw = process.argv.slice(2)
 	const targets: Target[] = []
 	const envs: Environment[] = []
@@ -223,6 +268,7 @@ function parseArgs(): { envs: Environment[]; targets: Target[] } {
 	return {
 		envs: envs.length > 0 ? envs : [...ENVIRONMENTS],
 		targets: targets.length > 0 ? targets : [...TARGETS],
+		explicitEnv: envs.length > 0,
 	}
 }
 
