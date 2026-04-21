@@ -130,15 +130,15 @@ jobs:
               echo "mode=production" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "mode=" >> "$GITHUB_OUTPUT"
+            echo "mode=production" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build
         run: bun run build ${{ steps.build-mode.outputs.mode != '' && format('-- --mode {0}', steps.build-mode.outputs.mode) || '' }}
         env:
           CLOUDFLARE_ENV: ${{ steps.build-mode.outputs.mode }}
-          DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
-          DOTENV_PRIVATE_KEY_PRODUCTION: ${{ env.IS_PREVIEW != 'true' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
+          DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ steps.env-tier.outputs.tier == 'multi' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
+          DOTENV_PRIVATE_KEY_PRODUCTION: ${{ steps.env-tier.outputs.tier == 'multi' && env.IS_PREVIEW != 'true' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
           DOTENV_PRIVATE_KEY: ${{ steps.env-tier.outputs.tier == 'single' && secrets.DOTENV_PRIVATE_KEY || '' }}
 
       - name: Deploy

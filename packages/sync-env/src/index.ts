@@ -99,6 +99,7 @@ async function scanEdgeFunctionEnvKeys(): Promise<Set<string>> {
 
 /** Keys to exclude from Cloudflare entirely (local-only, dotenvx internal, or Supabase-edge-only) */
 const CF_SKIP_KEYS = new Set([
+	'DOTENV_PUBLIC_KEY',
 	'DOTENV_PUBLIC_KEY_DEVELOPMENT',
 	'DOTENV_PUBLIC_KEY_PRODUCTION',
 	'NODE_OPTIONS',
