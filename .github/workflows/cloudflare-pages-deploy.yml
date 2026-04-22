@@ -61,17 +61,6 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || '' }}
 
-      - name: Detect env tier
-        id: env-tier
-        run: |
-          if [ -f .env.development ] || [ -f .env.production ]; then
-            echo "tier=multi" >> "$GITHUB_OUTPUT"
-          elif [ -f .env ]; then
-            echo "tier=single" >> "$GITHUB_OUTPUT"
-          else
-            echo "tier=none" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
 
@@ -113,6 +102,21 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+        env:
+          DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
+          DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
+          DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
+
+      - name: Detect env tier
+        id: env-tier
+        run: |
+          if [ -f .env.development ] || [ -f .env.production ]; then
+            echo "tier=multi" >> "$GITHUB_OUTPUT"
+          elif [ -f .env ]; then
+            echo "tier=single" >> "$GITHUB_OUTPUT"
+          else
+            echo "tier=none" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
