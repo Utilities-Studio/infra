@@ -9,10 +9,15 @@ on:
         type: string
         default: ''
       working_directory:
-        description: 'Working directory for the project'
+        description: 'Working directory for wrangler deploy'
         required: false
         type: string
         default: '.'
+      install_directory:
+        description: 'Directory for bun install and env files (monorepo root). Defaults to working_directory.'
+        required: false
+        type: string
+        default: ''
       pre_deploy_commands:
         description: 'Commands to run before build'
         required: false
@@ -46,17 +51,14 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: cf-workers-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
+      group: cf-workers-${{ inputs.working_directory }}-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
     environment: ${{ github.event.pull_request.number == '' && (inputs.environment || 'production') || '' }}
 
     env:
       IS_PREVIEW: ${{ github.event.pull_request.number != '' }}
-
-    defaults:
-      run:
-        working-directory: ${{ inputs.working_directory }}
+      INSTALL_DIR: ${{ inputs.install_directory || inputs.working_directory }}
 
     steps:
       - name: Checkout repository
@@ -79,16 +81,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cf-workers-preview -->';
+            const marker = `<!-- cf-workers-preview-${{ inputs.working_directory }} -->`;
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const branch = context.payload.pull_request.head.ref;
-            const repo = context.payload.repository.name;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const worker = '${{ inputs.working_directory }}'.replace(/^apps\//, '');
 
             const body = [
               marker,
-              `### Deploying \`${branch}\` with ⚡ Cloudflare Workers`,
+              `### Deploying \`${branch}\` -- ${worker} ⚡`,
               '',
               `| | |`,
               `|---|---|`,
@@ -112,6 +114,7 @@ jobs:
             }
 
       - name: Install dependencies
+        working-directory: ${{ env.INSTALL_DIR }}
         run: bun install --frozen-lockfile
         env:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
@@ -120,6 +123,7 @@ jobs:
 
       - name: Detect env tier
         id: env-tier
+        working-directory: ${{ env.INSTALL_DIR }}
         run: |
           if [ -f .env.development ] || [ -f .env.production ]; then
             echo "tier=multi" >> "$GITHUB_OUTPUT"
@@ -131,7 +135,8 @@ jobs:
 
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}
-        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }}
+        working-directory: ${{ inputs.working_directory }}
+        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }} ${{ env.INSTALL_DIR != inputs.working_directory && format('--env-dir {0}', env.INSTALL_DIR) || '' }}
         env:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
@@ -139,10 +144,12 @@ jobs:
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
+        working-directory: ${{ inputs.working_directory }}
         run: ${{ inputs.pre_deploy_commands }}
 
       - name: Build
         if: ${{ !inputs.skip_build }}
+        working-directory: ${{ inputs.working_directory }}
         run: bun run build ${{ inputs.environment != '' && format('-- --mode {0}', inputs.environment) || '' }}
         env:
           CLOUDFLARE_ENV: ${{ inputs.environment }}
@@ -185,16 +192,17 @@ jobs:
           PREVIEW_URL: ${{ steps.preview-url.outputs.url }}
         with:
           script: |
-            const marker = '<!-- cf-workers-preview -->';
+            const marker = `<!-- cf-workers-preview-${{ inputs.working_directory }} -->`;
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const branch = context.payload.pull_request.head.ref;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const previewUrl = process.env.PREVIEW_URL || null;
+            const worker = '${{ inputs.working_directory }}'.replace(/^apps\//, '');
 
             const body = [
               marker,
-              `### Deployed \`${branch}\` with ⚡ Cloudflare Workers`,
+              `### Deployed \`${branch}\` -- ${worker} ⚡`,
               '',
               `| | |`,
               `|---|---|`,
@@ -221,15 +229,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const marker = '<!-- cf-workers-preview -->';
+            const marker = `<!-- cf-workers-preview-${{ inputs.working_directory }} -->`;
             const pr = context.payload.pull_request.number;
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const branch = context.payload.pull_request.head.ref;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const worker = '${{ inputs.working_directory }}'.replace(/^apps\//, '');
 
             const body = [
               marker,
-              `### Failed to deploy \`${branch}\` with ⚡ Cloudflare Workers`,
+              `### Failed to deploy \`${branch}\` -- ${worker} ⚡`,
               '',
               `| | |`,
               `|---|---|`,

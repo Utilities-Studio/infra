@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 import { parse } from 'dotenv'
 import { parse as parseJsonc } from 'jsonc-parser'
-import { join } from 'node:path'
-
-const ROOT = process.cwd()
+import { join, relative } from 'node:path'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -14,15 +12,16 @@ type Environment = (typeof ENVIRONMENTS)[number]
 
 type EnvTier = 'multi' | 'single' | 'none'
 
-async function detectTier(): Promise<EnvTier> {
-	const hasDev = await Bun.file(join(ROOT, '.env.development')).exists()
-	const hasProd = await Bun.file(join(ROOT, '.env.production')).exists()
+async function detectTier(envDir: string): Promise<EnvTier> {
+	const hasDev = await Bun.file(join(envDir, '.env.development')).exists()
+	const hasProd = await Bun.file(join(envDir, '.env.production')).exists()
 	if (hasDev || hasProd) return 'multi'
-	if (await Bun.file(join(ROOT, '.env')).exists()) return 'single'
+	if (await Bun.file(join(envDir, '.env')).exists()) return 'single'
 	return 'none'
 }
 
 async function loadEnvFiles(
+	envDir: string,
 	tier: EnvTier,
 	requestedEnvs: Environment[],
 ): Promise<Record<string, Record<string, string>>> {
@@ -31,7 +30,7 @@ async function loadEnvFiles(
 	if (tier === 'none') return envVars
 
 	if (tier === 'single') {
-		const envFile = Bun.file(join(ROOT, '.env'))
+		const envFile = Bun.file(join(envDir, '.env'))
 		if (!(await envFile.exists())) return envVars
 		envVars['root'] = parse(await envFile.text())
 		console.log(`  loaded .env (${Object.keys(envVars['root']).length} keys)`)
@@ -39,7 +38,7 @@ async function loadEnvFiles(
 	}
 
 	for (const env of requestedEnvs) {
-		const envFile = Bun.file(join(ROOT, `.env.${env}`))
+		const envFile = Bun.file(join(envDir, `.env.${env}`))
 		if (!(await envFile.exists())) {
 			console.log(`  .env.${env} not found, skipping`)
 			continue
@@ -66,9 +65,8 @@ function isSecretKey(key: string): boolean {
 	)
 }
 
-
-async function run(cmd: string): Promise<{ ok: boolean; output: string }> {
-	const proc = Bun.spawn(['sh', '-c', cmd], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' })
+async function run(cmd: string, cwd: string): Promise<{ ok: boolean; output: string }> {
+	const proc = Bun.spawn(['sh', '-c', cmd], { cwd, stdout: 'pipe', stderr: 'pipe' })
 	const stdout = await new Response(proc.stdout).text()
 	const stderr = await new Response(proc.stderr).text()
 	const exitCode = await proc.exited
@@ -81,17 +79,21 @@ async function run(cmd: string): Promise<{ ok: boolean; output: string }> {
 // Scan: find all Deno.env.get() calls in supabase/functions/
 // ──────────────────────────────────────────────────────────────────────────────
 
-async function scanEdgeFunctionEnvKeys(): Promise<Set<string>> {
-	const functionsDir = join(ROOT, 'supabase/functions')
+async function scanEdgeFunctionEnvKeys(rootDir: string): Promise<Set<string>> {
+	const functionsDir = join(rootDir, 'supabase/functions')
 	const keys = new Set<string>()
 	const envGetPattern = /Deno\.env\.get\(\s*['"]([^'"]+)['"]\s*\)/g
 	const glob = new Bun.Glob('**/*.{ts,js}')
 
-	for await (const path of glob.scan({ cwd: functionsDir })) {
-		const content = await Bun.file(join(functionsDir, path)).text()
-		for (const match of content.matchAll(envGetPattern)) {
-			keys.add(match[1])
+	try {
+		for await (const path of glob.scan({ cwd: functionsDir })) {
+			const content = await Bun.file(join(functionsDir, path)).text()
+			for (const match of content.matchAll(envGetPattern)) {
+				keys.add(match[1])
+			}
 		}
+	} catch {
+		// supabase/functions/ may not exist
 	}
 
 	return keys
@@ -108,18 +110,50 @@ const CF_SKIP_KEYS = new Set([
 ])
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Sync: Cloudflare — vars to wrangler.jsonc, secrets via bulk upload
+// Discover wrangler.jsonc files (monorepo support)
 // ──────────────────────────────────────────────────────────────────────────────
 
-async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
-	console.log('\n── Cloudflare ──────────────────────────────────────\n')
+async function discoverWranglerConfigs(rootDir: string): Promise<string[]> {
+	const rootConfig = join(rootDir, 'wrangler.jsonc')
+	if (await Bun.file(rootConfig).exists()) {
+		return [rootConfig]
+	}
 
-	const wranglerPath = join(ROOT, 'wrangler.jsonc')
+	const configs: string[] = []
+	const glob = new Bun.Glob('apps/*/wrangler.jsonc')
+
+	for await (const path of glob.scan({ cwd: rootDir })) {
+		configs.push(join(rootDir, path))
+	}
+
+	if (configs.length === 0) {
+		const packagesGlob = new Bun.Glob('packages/*/wrangler.jsonc')
+		for await (const path of packagesGlob.scan({ cwd: rootDir })) {
+			configs.push(join(rootDir, path))
+		}
+	}
+
+	return configs.sort()
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Sync: Cloudflare -- vars to wrangler.jsonc, secrets via bulk upload
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function syncCloudflareForConfig(
+	wranglerPath: string,
+	envVars: Record<string, Record<string, string>>,
+	rootDir: string,
+) {
+	const displayPath = relative(rootDir, wranglerPath) || 'wrangler.jsonc'
+	console.log(`\n  ── ${displayPath} ──`)
+
 	const wrangler = parseJsonc(await Bun.file(wranglerPath).text()) as Record<string, unknown>
+	const wranglerDir = join(wranglerPath, '..')
 
 	const isRoot = 'root' in envVars
 
-	console.log('  vars (wrangler.jsonc):')
+	console.log('    vars (wrangler.jsonc):')
 	if (isRoot) {
 		const vars: Record<string, string> = {}
 		for (const [key, value] of Object.entries(envVars['root'])) {
@@ -127,7 +161,7 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 			vars[key] = value
 		}
 		;(wrangler as Record<string, unknown>).vars = vars
-		console.log(`    root: ${Object.keys(vars).length} vars`)
+		console.log(`      root: ${Object.keys(vars).length} vars`)
 	} else {
 		const envBlock = (wrangler.env ?? {}) as Record<string, { vars?: Record<string, string> }>
 		for (const [env, allVars] of Object.entries(envVars)) {
@@ -137,14 +171,14 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 				vars[key] = value
 			}
 			envBlock[env] = { ...envBlock[env], vars }
-			console.log(`    ${env}: ${Object.keys(vars).length} vars`)
+			console.log(`      ${env}: ${Object.keys(vars).length} vars`)
 		}
 		wrangler.env = envBlock
 	}
 
 	await Bun.write(wranglerPath, JSON.stringify(wrangler, null, '\t') + '\n')
 
-	console.log('\n  secrets (bulk upload):')
+	console.log('    secrets (bulk upload):')
 	for (const [env, allVars] of Object.entries(envVars)) {
 		const secrets = Object.fromEntries(
 			Object.entries(allVars).filter(
@@ -154,39 +188,71 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 		const count = Object.keys(secrets).length
 
 		if (count === 0) {
-			console.log(`    ${env}: no secrets to push`)
+			console.log(`      ${env}: no secrets to push`)
 			continue
 		}
 
-		const tmpFile = join(ROOT, `.cf-secrets-${env}.json`)
+		const tmpFile = join(wranglerDir, `.cf-secrets-${env}.json`)
 		await Bun.write(tmpFile, JSON.stringify(secrets))
 
 		const envFlag = env === 'root' ? '' : ` --env ${env}`
 		const { ok, output } = await run(
 			`bunx wrangler versions secret bulk ${tmpFile}${envFlag}`,
+			wranglerDir,
 		)
 
 		const { unlink } = await import('node:fs/promises')
 		await unlink(tmpFile)
 
 		if (ok) {
-			console.log(`    ${env}: ok (${count} secrets)`)
-			for (const key of Object.keys(secrets)) console.log(`      ok ${key}`)
+			console.log(`      ${env}: ok (${count} secrets)`)
+			for (const key of Object.keys(secrets)) console.log(`        ok ${key}`)
 		} else {
-			console.log(`    ${env}: FAIL`)
-			console.log(`      ${output.split('\n')[0]}`)
+			console.log(`      ${env}: FAIL`)
+			console.log(`        ${output.split('\n')[0]}`)
 		}
 	}
 }
 
+async function syncCloudflare(
+	envVars: Record<string, Record<string, string>>,
+	rootDir: string,
+) {
+	console.log('\n── Cloudflare ──────────────────────────────────────\n')
+
+	const configs = await discoverWranglerConfigs(rootDir)
+
+	if (configs.length === 0) {
+		console.log('  No wrangler.jsonc found. Skipping Cloudflare sync.')
+		return
+	}
+
+	if (configs.length > 1) {
+		console.log(`  Found ${configs.length} wrangler configs (monorepo mode)`)
+	}
+
+	for (const configPath of configs) {
+		await syncCloudflareForConfig(configPath, envVars, rootDir)
+	}
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
-// Sync: Supabase — only keys edge functions actually use (auto-scanned)
+// Sync: Supabase -- only keys edge functions actually use (auto-scanned)
 // ──────────────────────────────────────────────────────────────────────────────
 
-async function syncSupabase(envVars: Record<string, Record<string, string>>) {
-	const edgeKeys = await scanEdgeFunctionEnvKeys()
+async function syncSupabase(
+	envVars: Record<string, Record<string, string>>,
+	rootDir: string,
+) {
+	const edgeKeys = await scanEdgeFunctionEnvKeys(rootDir)
 
 	console.log('\n── Supabase (edge function secrets) ─────────────────')
+
+	if (edgeKeys.size === 0) {
+		console.log('  No supabase/functions/ found or no Deno.env.get() calls. Skipping.')
+		return
+	}
+
 	console.log(`  scanned keys: ${[...edgeKeys].sort().join(', ')}\n`)
 
 	for (const [env, vars] of Object.entries(envVars)) {
@@ -209,6 +275,7 @@ async function syncSupabase(envVars: Record<string, Record<string, string>>) {
 		const pairs = entries.map(([key, value]) => `${key}=${value}`)
 		const { ok, output } = await run(
 			`bunx supabase secrets set ${pairs.join(' ')} --project-ref ${projectId}`,
+			rootDir,
 		)
 
 		if (ok) {
@@ -230,10 +297,14 @@ type Target = (typeof TARGETS)[number]
 
 async function main() {
 	const start = performance.now()
-	const { envs, targets, explicitEnv } = parseArgs()
-	const tier = explicitEnv ? 'multi' : await detectTier()
+	const { envs, targets, explicitEnv, envDir } = parseArgs()
+
+	const rootDir = process.cwd()
+	const resolvedEnvDir = envDir ? join(rootDir, envDir) : rootDir
+	const tier = explicitEnv ? 'multi' : await detectTier(resolvedEnvDir)
 
 	console.log(`Env tier: ${tier}`)
+	console.log(`Env dir: ${relative(rootDir, resolvedEnvDir) || '.'}`)
 	console.log(`Syncing env vars -> ${targets.join(', ')}`)
 
 	if (tier === 'none') {
@@ -243,37 +314,40 @@ async function main() {
 
 	if (explicitEnv) {
 		for (const env of envs) {
-			const envFile = Bun.file(join(ROOT, `.env.${env}`))
+			const envFile = Bun.file(join(resolvedEnvDir, `.env.${env}`))
 			if (!(await envFile.exists())) {
-				console.error(`Error: .env.${env} not found (--env ${env} was explicitly requested)`)
+				console.error(`Error: .env.${env} not found in ${resolvedEnvDir} (--env ${env} was explicitly requested)`)
 				process.exit(1)
 			}
 		}
 	}
 
-	const envVars = await loadEnvFiles(tier, envs)
+	const envVars = await loadEnvFiles(resolvedEnvDir, tier, envs)
 
 	if (Object.keys(envVars).length === 0) {
 		console.log('\nNo env files loaded. Nothing to sync.')
 		return
 	}
 
-	if (targets.includes('cloudflare')) await syncCloudflare(envVars)
-	if (targets.includes('supabase')) await syncSupabase(envVars)
+	if (targets.includes('cloudflare')) await syncCloudflare(envVars, rootDir)
+	if (targets.includes('supabase')) await syncSupabase(envVars, rootDir)
 
 	const elapsed = ((performance.now() - start) / 1000).toFixed(1)
 	console.log(`\nDone in ${elapsed}s.`)
 }
 
-function parseArgs(): { envs: Environment[]; targets: Target[]; explicitEnv: boolean } {
+function parseArgs(): { envs: Environment[]; targets: Target[]; explicitEnv: boolean; envDir: string | null } {
 	const raw = process.argv.slice(2)
 	const targets: Target[] = []
 	const envs: Environment[] = []
+	let envDir: string | null = null
 
 	for (let i = 0; i < raw.length; i++) {
 		if (raw[i] === '--env' && raw[i + 1]) {
 			const val = raw[++i] as Environment
 			if (ENVIRONMENTS.includes(val)) envs.push(val)
+		} else if (raw[i] === '--env-dir' && raw[i + 1]) {
+			envDir = raw[++i]
 		} else if (TARGETS.includes(raw[i] as Target)) {
 			targets.push(raw[i] as Target)
 		}
@@ -283,6 +357,7 @@ function parseArgs(): { envs: Environment[]; targets: Target[]; explicitEnv: boo
 		envs: envs.length > 0 ? envs : [...ENVIRONMENTS],
 		targets: targets.length > 0 ? targets : [...TARGETS],
 		explicitEnv: envs.length > 0,
+		envDir,
 	}
 }
 
