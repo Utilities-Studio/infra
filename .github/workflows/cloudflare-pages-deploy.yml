@@ -21,6 +21,14 @@ on:
         description: 'Commands to run before build'
         required: false
         type: string
+      build_mode:
+        description: 'Override Vite build mode (e.g. preview, development, production). Skips auto-detection when set.'
+        required: false
+        type: string
+      deploy_branch:
+        description: 'Override Cloudflare Pages deploy branch. Defaults to pr-<number> for PRs, main otherwise.'
+        required: false
+        type: string
       account_id:
         description: 'Cloudflare account ID'
         required: true
@@ -45,11 +53,11 @@ jobs:
     runs-on: ubuntu-latest
 
     concurrency:
-      group: cf-pages-${{ inputs.project_name }}-${{ github.event.pull_request.number || 'production' }}-${{ github.repository }}
+      group: cf-pages-${{ inputs.project_name }}-${{ inputs.deploy_branch || github.event.pull_request.number || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
     environment:
-      name: ${{ github.event.pull_request.number == '' && 'production' || '' }}
+      name: ${{ inputs.deploy_branch != '' && inputs.deploy_branch || (github.event.pull_request.number == '' && 'production' || '') }}
       url: ${{ steps.deploy.outputs.deployment-url }}
 
     env:
@@ -136,6 +144,11 @@ jobs:
       - name: Compute build mode
         id: build-mode
         run: |
+          OVERRIDE="${{ inputs.build_mode }}"
+          if [ -n "$OVERRIDE" ]; then
+            echo "mode=$OVERRIDE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           TIER="${{ steps.env-tier.outputs.tier }}"
           IS_PREVIEW="${{ env.IS_PREVIEW }}"
           if [ "$TIER" = "multi" ]; then
@@ -156,13 +169,25 @@ jobs:
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ steps.env-tier.outputs.tier == 'multi' && env.IS_PREVIEW != 'true' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
           DOTENV_PRIVATE_KEY: ${{ steps.env-tier.outputs.tier == 'single' && secrets.DOTENV_PRIVATE_KEY || '' }}
 
+      - name: Compute deploy branch
+        id: deploy-branch
+        run: |
+          OVERRIDE="${{ inputs.deploy_branch }}"
+          if [ -n "$OVERRIDE" ]; then
+            echo "branch=$OVERRIDE" >> "$GITHUB_OUTPUT"
+          elif [ "${{ env.IS_PREVIEW }}" = "true" ]; then
+            echo "branch=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ inputs.account_id }}
-          command: pages deploy ${{ inputs.build_output_directory }} --project-name=${{ inputs.project_name }} ${{ env.IS_PREVIEW == 'true' && format('--branch=pr-{0}', github.event.pull_request.number) || '--branch=main' }}
+          command: pages deploy ${{ inputs.build_output_directory }} --project-name=${{ inputs.project_name }} --branch=${{ steps.deploy-branch.outputs.branch }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
