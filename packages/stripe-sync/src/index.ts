@@ -21,8 +21,9 @@ Options:
 
 Environment:
   STRIPE_SECRET_KEY       Required for all commands
-  SUPABASE_URL            Required for pull and webhook
-  SUPABASE_SERVICE_ROLE_KEY  Required for pull`)
+  SUPABASE_URL            Required for pull and webhook (fallback)
+  SUPABASE_SERVICE_ROLE_KEY  Required for pull
+  WEBHOOK_URL             Override webhook endpoint URL (skips Supabase URL)`)
 
 	process.exit(1)
 }

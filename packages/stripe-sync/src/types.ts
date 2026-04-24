@@ -30,4 +30,5 @@ export type StripeConfig = {
 	}>
 	webhookEvents: Stripe.WebhookEndpointCreateParams.EnabledEvent[]
 	webhookName: string
+	webhookUrl?: string
 }

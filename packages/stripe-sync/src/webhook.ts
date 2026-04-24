@@ -11,14 +11,19 @@ export async function webhook(
 
 	const supabaseUrl =
 		process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-	if (!supabaseUrl) {
+
+	// Priority: WEBHOOK_URL env > config webhookUrl > Supabase URL fallback
+	const webhookUrl =
+		process.env.WEBHOOK_URL ||
+		config.webhookUrl ||
+		(supabaseUrl ? `${supabaseUrl}/functions/v1/stripe-webhooks` : undefined)
+
+	if (!webhookUrl) {
 		console.error(
-			'SUPABASE_URL or VITE_SUPABASE_URL required for webhook setup',
+			'Webhook URL required. Set WEBHOOK_URL env var, add webhookUrl to config, or set SUPABASE_URL.',
 		)
 		process.exit(1)
 	}
-
-	const webhookUrl = `${supabaseUrl}/functions/v1/stripe-webhooks`
 	const webhookEvents = config.webhookEvents
 	const webhookName = config.webhookName
 
