@@ -21,6 +21,10 @@ on:
         description: 'Commands to run before build'
         required: false
         type: string
+      account_id:
+        description: 'Cloudflare account ID'
+        required: true
+        type: string
     secrets:
       CLOUDFLARE_API_TOKEN:
         required: true
@@ -157,6 +161,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ inputs.account_id }}
           command: pages deploy ${{ inputs.build_output_directory }} --project-name=${{ inputs.project_name }} ${{ env.IS_PREVIEW == 'true' && format('--branch=pr-{0}', github.event.pull_request.number) || '--branch=main' }}
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
