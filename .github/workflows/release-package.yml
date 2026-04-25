@@ -73,6 +73,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
@@ -104,9 +105,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Tag release
+      - name: Commit version bump and tag release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add package.json
+          git commit -m "chore(${{ matrix.package }}): bump to ${{ steps.version.outputs.version }} [skip ci]"
           git tag "${{ matrix.package }}-${{ steps.version.outputs.version }}"
-          git push origin "${{ matrix.package }}-${{ steps.version.outputs.version }}"
+          git push origin main --tags
