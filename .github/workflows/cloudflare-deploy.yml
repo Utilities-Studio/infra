@@ -146,6 +146,7 @@ jobs:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
           DOTENV_PRIVATE_KEY: ${{ steps.env-tier.outputs.tier == 'single' && secrets.DOTENV_PRIVATE_KEY || '' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
