@@ -20,6 +20,14 @@ async function detectTier(envDir: string): Promise<EnvTier> {
 	return 'none'
 }
 
+function expandVars(vars: Record<string, string>): Record<string, string> {
+	const expanded: Record<string, string> = {}
+	for (const [key, value] of Object.entries(vars)) {
+		expanded[key] = value.replace(/\$\{([^}]+)}/g, (_, ref) => vars[ref] ?? '')
+	}
+	return expanded
+}
+
 async function loadEnvFiles(
 	envDir: string,
 	tier: EnvTier,
@@ -32,7 +40,7 @@ async function loadEnvFiles(
 	if (tier === 'single') {
 		const envFile = Bun.file(join(envDir, '.env'))
 		if (!(await envFile.exists())) return envVars
-		envVars['root'] = parse(await envFile.text())
+		envVars['root'] = expandVars(parse(await envFile.text()))
 		console.log(`  loaded .env (${Object.keys(envVars['root']).length} keys)`)
 		return envVars
 	}
@@ -43,7 +51,7 @@ async function loadEnvFiles(
 			console.log(`  .env.${env} not found, skipping`)
 			continue
 		}
-		envVars[env] = parse(await envFile.text())
+		envVars[env] = expandVars(parse(await envFile.text()))
 		console.log(`  loaded .env.${env} (${Object.keys(envVars[env]).length} keys)`)
 	}
 
