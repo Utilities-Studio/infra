@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { parse } from 'dotenv'
 import { parse as parseJsonc } from 'jsonc-parser'
-import { join, relative } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -300,7 +300,7 @@ async function main() {
 	const { envs, targets, explicitEnv, envDir } = parseArgs()
 
 	const rootDir = process.cwd()
-	const resolvedEnvDir = envDir ? join(rootDir, envDir) : rootDir
+	const resolvedEnvDir = envDir ? resolve(rootDir, envDir) : rootDir
 	const tier = explicitEnv ? 'multi' : await detectTier(resolvedEnvDir)
 
 	console.log(`Env tier: ${tier}`)
