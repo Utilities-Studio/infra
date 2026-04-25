@@ -136,7 +136,12 @@ jobs:
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}
         working-directory: ${{ inputs.working_directory }}
-        run: bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }} ${{ env.INSTALL_DIR != inputs.working_directory && format('--env-dir {0}', env.INSTALL_DIR) || '' }}
+        run: |
+          ENV_DIR_FLAG=""
+          if [ "${{ env.INSTALL_DIR }}" != "${{ inputs.working_directory }}" ]; then
+            ENV_DIR_FLAG="--env-dir $GITHUB_WORKSPACE/${{ env.INSTALL_DIR }}"
+          fi
+          bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }} $ENV_DIR_FLAG
         env:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.environment == 'development' && secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT || '' }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.environment == 'production' && secrets.DOTENV_PRIVATE_KEY_PRODUCTION || '' }}
