@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/sync-env",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "Sync environment variables to Cloudflare Workers and Supabase Edge Functions",
 	"type": "module",
 	"bin": {
