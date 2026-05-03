@@ -10,6 +10,7 @@ jobs:
   cleanup:
     if: github.event.pull_request.number != '' && github.event.action == 'closed'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Update deploy comment

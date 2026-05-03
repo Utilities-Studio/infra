@@ -51,6 +51,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     concurrency:
       group: cf-pages-${{ inputs.project_name }}-${{ inputs.deploy_branch || github.event.pull_request.number || 'production' }}-${{ github.repository }}
