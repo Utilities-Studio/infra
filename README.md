@@ -7,7 +7,7 @@
     The infrastructure layer behind every <a href="https://github.com/Utilities-Studio">Utilities Studio</a> project.
   </p>
   <p align="center">
-    <code>4 packages</code> &middot; <code>8 workflows</code> &middot; <code>3 platforms</code> &middot; <code>zero config</code>
+    <code>5 packages</code> &middot; <code>8 workflows</code> &middot; <code>3 platforms</code> &middot; <code>zero config</code>
   </p>
 </p>
 
@@ -47,6 +47,7 @@ All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` d
 | Package | Version | What it does |
 |---|---|---|
 | [`sync-env`](packages/sync-env/) | 1.1.0 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
+| [`env-encrypt`](packages/env-encrypt/) | 1.0.0 | Encrypt changed dotenvx env files only when plaintext values drift |
 | [`stripe-sync`](packages/stripe-sync/) | 1.0.1 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
 | [`vite-env`](packages/vite-env/) | 1.0.1 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
 | [`env-local`](packages/env-local/) | 1.0.1 | Generate `.env.development.local` from a running local Supabase instance |
@@ -84,6 +85,33 @@ bunx @utilities-studio/sync-env                                  # both targets,
 bunx @utilities-studio/sync-env cloudflare --env development     # just Cloudflare, just dev
 bunx @utilities-studio/sync-env supabase --env production        # just Supabase, just prod
 bunx @utilities-studio/sync-env cloudflare --env-dir ../..       # monorepo: env files at root
+```
+
+---
+
+## env-encrypt
+
+Fast dotenvx guard for pre-commit hooks. It checks `.env`, `.env.development`, and `.env.production` when they exist, compares parsed key/value maps against the matching `.encrypted` file, prints only changed key names, and encrypts only files that drifted.
+
+```bash
+bunx @utilities-studio/env-encrypt
+bunx @utilities-studio/env-encrypt --stage
+bunx @utilities-studio/env-encrypt --check
+bunx @utilities-studio/env-encrypt --env-dir ../..
+```
+
+Output never prints secret values:
+
+```text
+.env.development changed:
+  STRIPE_SECRET_KEY changed
+  SUPABASE_URL added
+```
+
+Use `--stage` in Husky hooks when encrypted files must be added back to the current commit:
+
+```sh
+bunx @utilities-studio/env-encrypt --stage
 ```
 
 ---
@@ -314,6 +342,9 @@ jobs:
 infra/
 ├── packages/
 │   ├── sync-env/              Sync env vars to Cloudflare + Supabase
+│   │   ├── src/index.ts
+│   │   └── package.json
+│   ├── env-encrypt/           Compare and encrypt dotenvx env files
 │   │   ├── src/index.ts
 │   │   └── package.json
 │   ├── stripe-sync/           Stripe <-> Supabase product sync
