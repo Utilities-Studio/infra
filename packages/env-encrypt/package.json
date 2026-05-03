@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/env-encrypt",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Encrypt changed dotenvx env files only when plaintext values drift",
 	"type": "module",
 	"bin": {

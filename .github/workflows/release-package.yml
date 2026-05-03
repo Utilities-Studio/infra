@@ -95,6 +95,9 @@ jobs:
       - name: Type check
         run: bunx tsc --noEmit
 
+      - name: Rebase latest
+        run: git pull --rebase origin main
+
       - name: Bump patch version
         id: version
         run: |
@@ -112,7 +115,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main
           git add package.json
           git commit -m "chore(${{ matrix.package }}): bump to ${{ steps.version.outputs.version }} [skip ci]"
           git tag "${{ matrix.package }}-${{ steps.version.outputs.version }}"
