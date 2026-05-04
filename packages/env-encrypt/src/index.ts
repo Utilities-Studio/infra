@@ -11,9 +11,9 @@ const LOCAL_DOTENVX_BIN = join(
 	process.platform === 'win32' ? 'dotenvx.cmd' : 'dotenvx',
 )
 
-type DiffKind = 'added' | 'removed' | 'changed'
+export type DiffKind = 'added' | 'removed' | 'changed'
 
-type Diff = {
+export type Diff = {
 	key: string
 	kind: DiffKind
 }
@@ -86,8 +86,8 @@ function isDotenvxMetadataKey(key: string): boolean {
 	)
 }
 
-function parseEnv(src: string): Record<string, string> {
-	const parsed = parse(src)
+export function parseEnv(src: string): Record<string, string> {
+	const parsed = parse(src, { processEnv: {} })
 	const env: Record<string, string> = {}
 
 	for (const [key, value] of Object.entries(parsed)) {
@@ -99,7 +99,7 @@ function parseEnv(src: string): Record<string, string> {
 	return env
 }
 
-function diffEnv(
+export function diffEnv(
 	encrypted: Record<string, string>,
 	plaintext: Record<string, string>,
 ): Diff[] {
@@ -281,7 +281,9 @@ async function main() {
 	console.log(`env-encrypt: done in ${elapsed}s.`)
 }
 
-main().catch((error) => {
-	console.error(error instanceof Error ? error.message : String(error))
-	process.exit(1)
-})
+if (import.meta.main) {
+	main().catch((error) => {
+		console.error(error instanceof Error ? error.message : String(error))
+		process.exit(1)
+	})
+}
