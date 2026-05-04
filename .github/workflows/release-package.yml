@@ -103,7 +103,7 @@ jobs:
         run: |
           PACKAGE_NAME=$(node -p "require('./package.json').name")
           CURRENT_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || node -p "require('./package.json').version")
-          NEW_VERSION=$(node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); console.log(`v${major}.${minor}.${patch + 1}`)" "$CURRENT_VERSION")
+          NEW_VERSION=$(node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); console.log('v' + major + '.' + minor + '.' + (patch + 1))" "$CURRENT_VERSION")
           npm version "$NEW_VERSION" --no-git-tag-version
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
