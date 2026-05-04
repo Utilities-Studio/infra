@@ -114,6 +114,8 @@ Use `--stage` in Husky hooks when encrypted files must be added back to the curr
 bunx @utilities-studio/env-encrypt --stage
 ```
 
+When `CI=true` or `GITHUB_ACTIONS=true`, `--stage` exits successfully without scanning or encrypting, so Husky hooks do not need a separate CI guard.
+
 ---
 
 ## stripe-sync

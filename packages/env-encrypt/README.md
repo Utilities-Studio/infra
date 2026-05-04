@@ -28,6 +28,8 @@ Stage changed encrypted files for a git hook:
 bunx @utilities-studio/env-encrypt --stage
 ```
 
+In CI, `--stage` exits successfully without scanning or encrypting when `CI=true` or `GITHUB_ACTIONS=true`.
+
 Check only and fail when encrypted files are out of date:
 
 ```bash
@@ -65,3 +67,4 @@ env-encrypt: encrypted env files are current.
 bunx @utilities-studio/env-encrypt --stage
 ```
 
+No separate CI guard is needed in the hook; the CLI skips `--stage` automatically in CI.

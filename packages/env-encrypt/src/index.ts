@@ -73,6 +73,10 @@ function parseArgs(): Args {
 	return args
 }
 
+function isCiEnvironment(): boolean {
+	return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+}
+
 function isDotenvxMetadataKey(key: string): boolean {
 	return (
 		key === 'DOTENV_PUBLIC_KEY' ||
@@ -202,6 +206,11 @@ async function main() {
 	if (args.check && args.stage) {
 		console.error('--stage cannot be used with --check')
 		process.exit(1)
+	}
+
+	if (args.stage && isCiEnvironment()) {
+		console.log('env-encrypt: skipping --stage in CI.')
+		return
 	}
 
 	let scanned = 0
