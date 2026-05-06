@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/stripe-sync",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Sync Stripe products, prices, and webhooks -- push config to Stripe, pull data to Supabase",
 	"type": "module",
 	"bin": {
@@ -10,6 +10,7 @@
 		"src"
 	],
 	"dependencies": {
+		"@supabase/stripe-sync-engine": "^0.48.5",
 		"stripe": "^18.1.0"
 	},
 	"devDependencies": {

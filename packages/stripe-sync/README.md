@@ -14,6 +14,9 @@ bunx @utilities-studio/stripe-sync push ./scripts/stripe-config.json --dry
 # Pull products/prices from Stripe to Supabase
 bunx @utilities-studio/stripe-sync pull
 
+# Force a pull target when auto-detection is not desired
+bunx @utilities-studio/stripe-sync pull --target=stripe-sync-engine
+
 # Setup/update webhook endpoint
 bunx @utilities-studio/stripe-sync webhook ./scripts/stripe-config.json
 ```
@@ -74,9 +77,22 @@ Create `scripts/stripe-config.json` in your project:
 | `STRIPE_SECRET_KEY` | all commands | Stripe API key |
 | `SUPABASE_URL` | pull, webhook | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | pull | Supabase admin key |
+| `SUPABASE_DB_URL` | pull | Direct Postgres URL for the `stripe-sync-engine` target |
+| `STRIPE_SYNC_TARGET` | pull | Optional target: `auto`, `public`, or `stripe-sync-engine` |
 
 ## Requirements
 
 - Bun runtime
 - Stripe account with API key
 - Supabase project (for pull and webhook commands)
+
+## Pull Targets
+
+`pull` defaults to `auto`. It first uses legacy public tables
+(`public.stripe_products` and `public.stripe_prices`) when they exist. If those
+tables are not present, it falls back to Supabase's Stripe sync engine mirror
+tables (`stripe.products` and `stripe.prices`). For the sync engine target, the
+package uses `SUPABASE_DB_URL` when available so it can run sync-engine
+migrations and write through direct Postgres. Without `SUPABASE_DB_URL`, it
+falls back to Supabase REST, and the `stripe` schema must be exposed in
+Supabase API settings with writable grants for the service role.

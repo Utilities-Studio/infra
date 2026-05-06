@@ -48,7 +48,7 @@ All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` d
 |---|---|---|
 | [`sync-env`](packages/sync-env/) | 1.1.0 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
 | [`env-encrypt`](packages/env-encrypt/) | 1.0.4 | Encrypt changed dotenvx env files only when plaintext values drift |
-| [`stripe-sync`](packages/stripe-sync/) | 1.0.1 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
+| [`stripe-sync`](packages/stripe-sync/) | 1.0.3 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
 | [`vite-env`](packages/vite-env/) | 1.0.1 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
 | [`env-local`](packages/env-local/) | 1.0.1 | Generate `.env.development.local` from a running local Supabase instance |
 
@@ -131,6 +131,9 @@ bunx @utilities-studio/stripe-sync push ./scripts/stripe-config.json --dry
 
 # Pull products + prices from Stripe into Supabase
 bunx @utilities-studio/stripe-sync pull
+
+# Pull into Supabase stripe-sync-engine mirror tables
+bunx @utilities-studio/stripe-sync pull --target=stripe-sync-engine
 
 # Create or update webhook endpoint
 bunx @utilities-studio/stripe-sync webhook ./scripts/stripe-config.json
