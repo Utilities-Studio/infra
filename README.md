@@ -50,7 +50,7 @@ All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` d
 | [`env-encrypt`](packages/env-encrypt/) | 1.0.4 | Encrypt changed dotenvx env files only when plaintext values drift |
 | [`stripe-sync`](packages/stripe-sync/) | 1.0.3 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
 | [`vite-env`](packages/vite-env/) | 1.0.1 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
-| [`env-local`](packages/env-local/) | 1.0.1 | Generate `.env.development.local` from a running local Supabase instance |
+| [`env-local`](packages/env-local/) | 1.0.2 | Generate matching local env overrides from a running local Supabase instance |
 
 ---
 
@@ -190,7 +190,15 @@ Bootstrap local Supabase credentials with zero manual copying.
 bunx @utilities-studio/env-local
 ```
 
-Reads `supabase status`, extracts all connection details, derives an HMAC-SHA256 webhook secret from the JWT secret, and writes `.env.development.local` with:
+Reads `supabase status`, extracts all connection details, derives an HMAC-SHA256 webhook secret from the JWT secret, and writes the matching local overlay:
+
+- `.env` -> `.env.local`
+- `.env.development` -> `.env.development.local`
+- no base env file -> `.env.local`
+
+Use `--env-file <file>` to force a base file or `--output <file>` to force the exact destination.
+
+The generated file includes:
 
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` / `VITE_SITE_URL`
 - `SUPABASE_URL` / `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_DB_URL`
@@ -363,7 +371,7 @@ infra/
 │   ├── vite-env/              Generate typed VITE_* declarations
 │   │   ├── src/index.ts
 │   │   └── package.json
-│   └── env-local/             Local Supabase -> .env.development.local
+│   └── env-local/             Local Supabase -> matching local env overlay
 │       ├── src/index.ts
 │       └── package.json
 ├── .github/workflows/

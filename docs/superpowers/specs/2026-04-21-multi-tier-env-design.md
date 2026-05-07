@@ -175,7 +175,7 @@ No other changes. Already exits gracefully when no `VITE_` vars found.
 
 ### 6. env-local
 
-**No changes.** Generates `.env.development.local` from local Supabase. Works for all tiers -- local dev always uses development overlay.
+Generates the local overlay that matches the project env file shape: `.env.development.local` for multi-tier projects with `.env.development`, and `.env.local` for single-tier projects with `.env`.
 
 ## Non-Breaking Migration
 

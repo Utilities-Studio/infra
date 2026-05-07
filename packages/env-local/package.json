@@ -1,7 +1,7 @@
 {
 	"name": "@utilities-studio/env-local",
-	"version": "1.0.1",
-	"description": "Generate .env.development.local from local Supabase instance",
+	"version": "1.0.2",
+	"description": "Generate matching local env overrides from local Supabase instance",
 	"type": "module",
 	"bin": {
 		"env-local": "./src/index.ts"
