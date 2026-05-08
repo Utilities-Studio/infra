@@ -198,7 +198,11 @@ Reads `supabase status`, extracts all connection details, derives an HMAC-SHA256
 
 Use `--env-file <file>` to force a base file or `--output <file>` to force the exact destination.
 
-The generated file includes:
+When a base env file exists, `env-local` reads its variable names and generates only matching local override variables. For example, email hook variables are generated only when `SEND_EMAIL_HOOK_URI` or `SEND_EMAIL_HOOK_SECRET` exists in the base file.
+
+When the output file already exists, `env-local` replaces only its generated local Supabase section and keeps user-created variables in a separate preserved section at the bottom.
+
+The generated variable set supports:
 
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` / `VITE_SITE_URL`
 - `SUPABASE_URL` / `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_DB_URL`
