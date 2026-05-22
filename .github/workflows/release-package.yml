@@ -110,7 +110,7 @@ jobs:
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish to npm
-        run: bun publish --access public --no-git-checks
+        run: npm publish --access public
 
       - name: Tag release
         run: |
