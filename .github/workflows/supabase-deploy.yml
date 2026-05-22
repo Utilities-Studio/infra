@@ -136,4 +136,6 @@ jobs:
           SUFFIX="${DEPLOY_ENV:+${DEPLOY_ENV}-}"
           TAG="supabase-deploy-${SUFFIX}$(date -u +%Y%m%d-%H%M%S)"
           git tag "$TAG"
-          git push origin "$TAG"
+          if ! git push origin "$TAG"; then
+            echo "::warning::Deployment completed, but pushing tag $TAG failed. This can happen when GitHub refuses tag creation for commits that touch workflow files without the workflow permission."
+          fi
