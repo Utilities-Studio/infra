@@ -3,8 +3,13 @@
 	"version": "1.0.5",
 	"description": "Encrypt changed dotenvx env files only when plaintext values drift",
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Utilities-Studio/infra",
+		"directory": "packages/env-encrypt"
+	},
 	"bin": {
-		"env-encrypt": "./src/index.ts"
+		"env-encrypt": "src/index.ts"
 	},
 	"files": [
 		"src"

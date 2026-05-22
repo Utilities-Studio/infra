@@ -3,8 +3,13 @@
 	"version": "1.0.3",
 	"description": "Sync Stripe products, prices, and webhooks -- push config to Stripe, pull data to Supabase",
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Utilities-Studio/infra",
+		"directory": "packages/stripe-sync"
+	},
 	"bin": {
-		"stripe-sync": "./src/index.ts"
+		"stripe-sync": "src/index.ts"
 	},
 	"files": [
 		"src"

@@ -3,8 +3,13 @@
 	"version": "1.0.2",
 	"description": "Generate matching local env overrides from local Supabase instance",
 	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Utilities-Studio/infra",
+		"directory": "packages/env-local"
+	},
 	"bin": {
-		"env-local": "./src/index.ts"
+		"env-local": "src/index.ts"
 	},
 	"files": [
 		"src"
