@@ -64,7 +64,7 @@ jobs:
           echo "Cleaned up ${COUNT} preview deployment(s)"
 
       - name: Update deploy comment
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- cf-pages-preview -->';

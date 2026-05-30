@@ -82,7 +82,7 @@ jobs:
 
       - name: Comment -- deploy started
         if: env.IS_PREVIEW == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = `<!-- cf-workers-preview-${{ inputs.working_directory }} -->`;
@@ -197,7 +197,7 @@ jobs:
 
       - name: Comment -- preview live
         if: env.IS_PREVIEW == 'true' && success()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PREVIEW_URL: ${{ steps.preview-url.outputs.url }}
         with:
@@ -236,7 +236,7 @@ jobs:
 
       - name: Comment -- deploy failed
         if: env.IS_PREVIEW == 'true' && failure()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = `<!-- cf-workers-preview-${{ inputs.working_directory }} -->`;

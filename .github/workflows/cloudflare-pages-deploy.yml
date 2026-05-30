@@ -89,7 +89,7 @@ jobs:
 
       - name: Comment -- deploy started
         if: env.IS_PREVIEW == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- cf-pages-preview -->';
@@ -198,7 +198,7 @@ jobs:
 
       - name: Comment -- deploy succeeded
         if: env.IS_PREVIEW == 'true' && success()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
           ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
@@ -240,7 +240,7 @@ jobs:
 
       - name: Comment -- deploy failed
         if: env.IS_PREVIEW == 'true' && failure()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- cf-pages-preview -->';
