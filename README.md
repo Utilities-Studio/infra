@@ -231,7 +231,7 @@ All workflows are reusable (`workflow_call`). Call them from any repo.
 |---|---|---|---|
 | [`cloudflare-deploy`](.github/workflows/cloudflare-deploy.yml) | Cloudflare Workers | Version preview with alias URL | Auto-expires |
 | [`cloudflare-pages-deploy`](.github/workflows/cloudflare-pages-deploy.yml) | Cloudflare Pages | Branch deploy with preview URL | Manual via cleanup workflow |
-| [`supabase-deploy`](.github/workflows/supabase-deploy.yml) | Supabase (migrations + edge functions) | -- | -- |
+| [`supabase-deploy`](.github/workflows/supabase-deploy.yml) | Supabase (migrations + optional seeds + edge functions) | -- | -- |
 
 All deployment workflows:
 - Detect env tier automatically (single vs multi)
@@ -302,6 +302,7 @@ jobs:
     with:
       environment: "production"
       deploy_migrations: true
+      deploy_seeds: false
       deploy_functions: true
     secrets:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

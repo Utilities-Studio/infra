@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: true
+      deploy_seeds:
+        description: 'Apply configured Supabase seed SQL during database deploy'
+        required: false
+        type: boolean
+        default: false
       deploy_functions:
         description: 'Deploy edge functions'
         required: false
@@ -37,7 +42,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
 
     concurrency:
       group: supabase-deploy-${{ inputs.environment || 'default' }}-${{ github.repository }}
@@ -121,7 +126,9 @@ jobs:
 
       - name: Deploy database migrations
         if: inputs.deploy_migrations
-        run: supabase db push --include-all --yes
+        env:
+          SUPABASE_SEED_FLAG: ${{ inputs.deploy_seeds && '--include-seed' || '' }}
+        run: supabase db push --include-all $SUPABASE_SEED_FLAG --yes
 
       - name: Deploy edge functions
         if: inputs.deploy_functions
