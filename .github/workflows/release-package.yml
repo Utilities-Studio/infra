@@ -26,6 +26,9 @@ permissions:
   id-token: write  # Required for OIDC
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: release-package
   cancel-in-progress: false
