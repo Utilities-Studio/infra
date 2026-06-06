@@ -69,7 +69,8 @@ function isSecretKey(key: string): boolean {
 		key.includes('API_KEY') ||
 		key.includes('TOKEN') ||
 		key.includes('SERVICE_ROLE_KEY') ||
-		key.includes('PRIVATE_KEY')
+		key.includes('PRIVATE_KEY') ||
+		key.includes('PASSWORD')
 	)
 }
 
