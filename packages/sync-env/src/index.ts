@@ -91,7 +91,8 @@ async function run(cmd: string, cwd: string): Promise<{ ok: boolean; output: str
 async function scanEdgeFunctionEnvKeys(rootDir: string): Promise<Set<string>> {
 	const functionsDir = join(rootDir, 'supabase/functions')
 	const keys = new Set<string>()
-	const envGetPattern = /Deno\.env\.get\(\s*['"]([^'"]+)['"]\s*\)/g
+	const envGetPattern =
+		/\bDeno\s*\.\s*env\s*\.\s*get\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 	const glob = new Bun.Glob('**/*.{ts,js}')
 
 	try {
