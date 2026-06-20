@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
+import { cac } from 'cac'
 import { createHmac } from 'node:crypto'
 import { basename, join, relative, resolve } from 'node:path'
+
+import { banner, printVersion, readPackageVersion } from './cli-kit'
 
 const DEFAULT_BASE_ENV_FILES = ['.env.development', '.env'] as const
 const GENERATED_SECTION_START = '# env-local:start'
@@ -33,7 +36,9 @@ const GENERATED_COMMENT_LINES = new Set([
 type Args = {
 	envDir: string | null
 	envFile: string | null
+	force: boolean
 	output: string | null
+	print: boolean
 }
 
 export type TargetEnvFile = {
@@ -51,51 +56,97 @@ type LocalEnvSection = {
 	entries: LocalEnvEntry[]
 }
 
-function usage(exitCode = 0): never {
-	console.log(`Usage: env-local [options]
-
-Generates local Supabase overrides in the local dotenv file that matches
-the project env file shape.
-
-Destination selection:
-  .env.development exists -> .env.development.local
-  .env exists             -> .env.local
-  neither exists          -> .env.local
-
-Options:
-  --env-dir <path>    Directory containing env files (default: current directory)
-  --env-file <file>   Base env file to mirror, for example .env or .env.development
-  --output <file>     Explicit local env file to write
-  -h, --help          Show help`)
-	process.exit(exitCode)
+function createCli() {
+	const cli = cac('env-local')
+	cli.usage('[options]')
+	cli.option('--env-dir <path>', 'Directory containing env files (default: current directory)')
+	cli.option('--env-file <file>', 'Base env file to mirror')
+	cli.option('--output <file>', 'Explicit local env file to write')
+	cli.option('--print', 'Print generated overlay to stdout instead of writing')
+	cli.option('--force', 'Overwrite the output file instead of preserving user content')
+	cli.option('-v, --version', 'Show version')
+	cli.example('env-local')
+	cli.example('env-local --env-file .env')
+	cli.example('env-local --print')
+	cli.help()
+	return cli
 }
 
-function parseArgs(): Args {
-	const raw = process.argv.slice(2)
-	const args: Args = {
-		envDir: null,
-		envFile: null,
-		output: null,
-	}
+function printUsageAndExit(message: string): never {
+	console.error(message)
+	createCli().outputHelp()
+	process.exit(1)
+}
 
-	for (let i = 0; i < raw.length; i++) {
-		const arg = raw[i]
+function validateRawOptions(raw: string[]): void {
+	const booleanFlags = new Set([
+		'--print',
+		'--force',
+		'--version',
+		'-v',
+		'--help',
+		'-h',
+	])
+	const valueFlags = new Set(['--env-dir', '--env-file', '--output'])
 
-		if (arg === '--env-dir' && raw[i + 1]) {
-			args.envDir = raw[++i]
-		} else if (arg === '--env-file' && raw[i + 1]) {
-			args.envFile = raw[++i]
-		} else if (arg === '--output' && raw[i + 1]) {
-			args.output = raw[++i]
-		} else if (arg === '-h' || arg === '--help') {
-			usage()
-		} else {
-			console.error(`Unknown option: ${arg}`)
-			usage(1)
+	for (let index = 0; index < raw.length; index++) {
+		const arg = raw[index]
+		if (!arg.startsWith('-')) {
+			printUsageAndExit(`Unexpected argument: ${arg}`)
 		}
+
+		const [flag] = arg.split('=')
+		if (booleanFlags.has(flag)) {
+			if (arg.includes('=')) printUsageAndExit(`${flag} does not accept a value`)
+			continue
+		}
+
+		if (valueFlags.has(flag)) {
+			if (arg.includes('=')) continue
+			const next = raw[index + 1]
+			if (!next || next.startsWith('-')) {
+				printUsageAndExit(`${flag} requires a value`)
+			}
+			index++
+			continue
+		}
+
+		printUsageAndExit(`Unknown option: ${flag}`)
+	}
+}
+
+function readOptionValue(
+	options: Record<string, unknown>,
+	name: string,
+): string | null {
+	const value = options[name]
+	return typeof value === 'string' && value.trim() ? value : null
+}
+
+function parseArgs(version: string): Args | null {
+	validateRawOptions(process.argv.slice(2))
+
+	const cli = createCli()
+	const parsed = cli.parse(process.argv, { run: false })
+	const options = parsed.options
+
+	if (options.help || options.h) return null
+	if (options.version || options.v) {
+		printVersion('env-local', version)
+		return null
 	}
 
-	return args
+	if (parsed.args.length > 0) {
+		printUsageAndExit(`Unexpected argument: ${parsed.args[0]}`)
+	}
+
+	return {
+		envDir: readOptionValue(options, 'envDir'),
+		envFile: readOptionValue(options, 'envFile'),
+		force: Boolean(options.force),
+		output: readOptionValue(options, 'output'),
+		print: Boolean(options.print),
+	}
 }
 
 export function localEnvFileNameFor(baseEnvFile: string): string {
@@ -373,7 +424,9 @@ function userLinesFromMarkedLocalEnv(existingContent: string): string[] {
 export function mergeLocalEnvContent(
 	generatedContent: string,
 	existingContent: string | null,
+	options: { preserveUserContent?: boolean } = {},
 ): string {
+	if (options.preserveUserContent === false) return generatedContent
 	if (!existingContent) return generatedContent
 
 	const hasMarkedGeneratedSection =
@@ -396,7 +449,14 @@ ${userLines.join('\n').trimEnd()}
 }
 
 async function main() {
-	const args = parseArgs()
+	const version = await readPackageVersion()
+	const args = parseArgs(version)
+	if (!args) return
+
+	banner('env-local', version, 'Generate local Supabase env overlays', {
+		quiet: args.print,
+	})
+
 	const rootDir = process.cwd()
 	const envDir = args.envDir ? resolve(rootDir, args.envDir) : rootDir
 
@@ -413,10 +473,18 @@ async function main() {
 		? parseEnvKeys(await Bun.file(resolve(envDir, target.baseEnvFile)).text())
 		: null
 	const generatedContent = renderLocalEnv(env, { allowedKeys })
+
+	if (args.print) {
+		console.log(generatedContent.trimEnd())
+		return
+	}
+
 	const existingContent = (await fileExists(target.outputFile))
 		? await Bun.file(target.outputFile).text()
 		: null
-	const content = mergeLocalEnvContent(generatedContent, existingContent)
+	const content = mergeLocalEnvContent(generatedContent, existingContent, {
+		preserveUserContent: !args.force,
+	})
 
 	await Bun.write(target.outputFile, content)
 	console.log(`Generated ${relative(rootDir, target.outputFile) || '.'} from local Supabase`)

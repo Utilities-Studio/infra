@@ -179,4 +179,17 @@ APP_MODE=local
 		expect(twice.match(/User-created local overrides/g)?.length).toBe(1)
 		expect(twice.match(/APP_MODE=local/g)?.length).toBe(1)
 	})
+
+	test('can replace the output wholesale when preservation is disabled', () => {
+		const existingContent = `${generatedContent}
+APP_MODE=local
+`
+
+		const merged = mergeLocalEnvContent(generatedContent, existingContent, {
+			preserveUserContent: false,
+		})
+
+		expect(merged).toBe(generatedContent)
+		expect(merged).not.toContain('APP_MODE=local')
+	})
 })

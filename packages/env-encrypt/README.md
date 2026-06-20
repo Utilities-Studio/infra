@@ -42,6 +42,14 @@ Use env files from another directory:
 bunx @utilities-studio/env-encrypt --env-dir ../..
 ```
 
+Scan custom env filenames or keep hook output quiet:
+
+```bash
+bunx @utilities-studio/env-encrypt --files .env,.env.preview
+bunx @utilities-studio/env-encrypt --quiet
+bunx @utilities-studio/env-encrypt --version
+```
+
 ## Output
 
 Secret values are never printed.
@@ -59,6 +67,8 @@ If nothing changed:
 ```text
 env-encrypt: encrypted env files are current.
 ```
+
+With `--quiet`, no-change runs print nothing; drift still prints changed key names.
 
 ## Husky
 

@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/vite-env",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Generate vite-env.d.ts type declarations from VITE_ environment variables",
 	"type": "module",
 	"repository": {
@@ -14,6 +14,10 @@
 	"files": [
 		"src"
 	],
+	"dependencies": {
+		"cac": "^7.0.0",
+		"picocolors": "^1.1.1"
+	},
 	"devDependencies": {
 		"@types/bun": "^1.2.13"
 	},

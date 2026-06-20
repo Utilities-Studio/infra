@@ -9,6 +9,11 @@ Scans `process.env` for all `VITE_` prefixed variables and generates a strict `I
 ```bash
 # Run with env file loaded
 bun --env-file=.env.development bunx @utilities-studio/vite-env
+
+# Write somewhere else or scan a different prefix
+bun --env-file=.env.development bunx @utilities-studio/vite-env --out src/env.d.ts
+bun --env-file=.env bunx @utilities-studio/vite-env --prefix PUBLIC_
+bunx @utilities-studio/vite-env --version
 ```
 
 ## Output
@@ -25,4 +30,4 @@ interface ImportMetaEnv {
 ## Requirements
 
 - Bun runtime
-- `.env.development` file in project root
+- `.env.development` or `.env` file in project root

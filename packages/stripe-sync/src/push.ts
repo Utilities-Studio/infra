@@ -1,5 +1,6 @@
 import type Stripe from 'stripe'
 
+import { info } from './cli-kit'
 import type { ProductConfig, StripeConfig } from './types.ts'
 
 function formatAmount(amount: number): string {
@@ -73,26 +74,26 @@ async function syncPrices(
 			if (amountMatch && shapeMatch) continue
 
 			if (dryRun) {
-				console.log(
+				info(
 					`    ~ Would update price: ${priceLabel} [${priceConfig.lookup_key}]`,
 				)
 				continue
 			}
 
 			await stripe.prices.create(createParams)
-			console.log(
+			info(
 				`    ~ Updated price: ${priceLabel} [${priceConfig.lookup_key}]`,
 			)
 		} else {
 			if (dryRun) {
-				console.log(
+				info(
 					`    + Would create price: ${priceLabel} [${priceConfig.lookup_key}]`,
 				)
 				continue
 			}
 
 			await stripe.prices.create(createParams)
-			console.log(
+			info(
 				`    + Created price: ${priceLabel} [${priceConfig.lookup_key}]`,
 			)
 		}
@@ -129,19 +130,19 @@ async function syncProduct(
 				const staleKeys = Object.entries(fullMetadata)
 					.filter(([, v]) => v === '')
 					.map(([k]) => k)
-				console.log(`  ~ Would update: ${productConfig.name}`)
+				info(`  ~ Would update: ${productConfig.name}`)
 				if (staleKeys.length)
-					console.log(`    - Would remove metadata: ${staleKeys.join(', ')}`)
+					info(`    - Would remove metadata: ${staleKeys.join(', ')}`)
 			} else {
 				await stripe.products.update(existing.id, {
 					description: productConfig.description,
 					marketing_features: marketingFeatures,
 					metadata: fullMetadata,
 				})
-				console.log(`  ~ Updated: ${productConfig.name}`)
+				info(`  ~ Updated: ${productConfig.name}`)
 			}
 		} else {
-			console.log(`  = Up to date: ${productConfig.name}`)
+			info(`  = Up to date: ${productConfig.name}`)
 		}
 
 		await syncPrices(stripe, existing.id, productConfig, dryRun)
@@ -149,12 +150,12 @@ async function syncProduct(
 	}
 
 	if (dryRun) {
-		console.log(`  + Would create: ${productConfig.name}`)
+		info(`  + Would create: ${productConfig.name}`)
 		for (const price of productConfig.prices) {
 			const label = price.one_time
 				? formatAmount(price.amount)
 				: `${formatAmount(price.amount)}/${price.interval}`
-			console.log(`    + Would create price: ${label} [${price.lookup_key}]`)
+			info(`    + Would create price: ${label} [${price.lookup_key}]`)
 		}
 		return
 	}
@@ -193,7 +194,7 @@ async function syncProduct(
 				: `${formatAmount(p.amount)}/${p.interval}`,
 		)
 		.join(', ')
-	console.log(`  + Created: ${productConfig.name} (${priceStr || 'free'})`)
+	info(`  + Created: ${productConfig.name} (${priceStr || 'free'})`)
 }
 
 function parseConfig(config: StripeConfig): ProductConfig[] {
@@ -219,9 +220,9 @@ export async function push(
 	const config: StripeConfig = await Bun.file(configPath).json()
 	const products = parseConfig(config)
 
-	if (dryRun) console.log('DRY RUN -- no changes will be made\n')
+	if (dryRun) info('DRY RUN -- no changes will be made\n')
 
-	console.log('=== Stripe Push ===\n')
+	info('=== Stripe Push ===\n')
 
 	const allProducts = await stripe.products.list({ limit: 100 })
 	const existingProducts = allProducts.data
@@ -230,5 +231,5 @@ export async function push(
 		await syncProduct(stripe, product, existingProducts, dryRun)
 	}
 
-	console.log('\nDone!')
+	info('\nDone!')
 }

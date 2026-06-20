@@ -11,6 +11,9 @@ Reads `supabase status`, extracts connection details, and generates or updates a
 bunx @utilities-studio/env-local
 bunx @utilities-studio/env-local --env-file .env
 bunx @utilities-studio/env-local --env-dir ../..
+bunx @utilities-studio/env-local --print
+bunx @utilities-studio/env-local --force
+bunx @utilities-studio/env-local --version
 ```
 
 ## Output
@@ -23,7 +26,7 @@ Writes the local overlay that matches the project env file shape:
 | `.env.development` | `.env.development.local` |
 | no base env file | `.env.local` |
 
-Use `--env-file <file>` to force a base file or `--output <file>` to force the exact destination.
+Use `--env-file <file>` to force a base file or `--output <file>` to force the exact destination. Use `--print` to inspect the generated overlay without writing, or `--force` to replace the output file instead of preserving user-created values.
 
 When a base env file exists, `env-local` reads its variable names and generates only matching local override variables. For example, email hook variables are generated only when `SEND_EMAIL_HOOK_URI` or `SEND_EMAIL_HOOK_SECRET` exists in the base file.
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { diffEnv, parseEnv } from './index'
+import { diffEnv, parseEnv, parseEnvFileList } from './index'
 
 const TEST_KEY = 'TEST_SECRET_VALUE'
 const ORIGINAL_TEST_VALUE = process.env[TEST_KEY]
@@ -27,6 +27,16 @@ describe('env file comparison', () => {
 		expect(plaintext[TEST_KEY]).toBe(PLAINTEXT_VALUE)
 		expect(diffEnv(encrypted, plaintext)).toEqual([
 			{ key: TEST_KEY, kind: 'changed' },
+		])
+	})
+})
+
+describe('env file option parsing', () => {
+	test('splits comma-separated env file names and trims empty entries', () => {
+		expect(parseEnvFileList('.env,.env.preview, .env.production ,,')).toEqual([
+			'.env',
+			'.env.preview',
+			'.env.production',
 		])
 	})
 })

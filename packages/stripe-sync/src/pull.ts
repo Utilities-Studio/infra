@@ -1,7 +1,10 @@
 import type Stripe from 'stripe'
 import { StripeSync, runMigrations } from '@supabase/stripe-sync-engine'
 
+import { fail, info, ok } from './cli-kit'
+
 type PullOptions = {
+	dryRun?: boolean
 	target?: PullTarget
 }
 
@@ -193,7 +196,7 @@ async function pullStripeSyncEngineWithDatabase(config: SupabaseConfig) {
 		throw new Error('STRIPE_SECRET_KEY is required for stripe-sync-engine pull')
 	}
 
-	console.log('\nRunning stripe-sync-engine migrations...')
+	info('\nRunning stripe-sync-engine migrations...')
 	await runMigrations({
 		databaseUrl: config.databaseUrl,
 		logger: console,
@@ -210,15 +213,15 @@ async function pullStripeSyncEngineWithDatabase(config: SupabaseConfig) {
 	})
 
 	try {
-		console.log('\nSyncing products...')
+		info('\nSyncing products...')
 		const productResult = await stripeSync.syncProducts()
-		console.log(`  ok ${productResult.synced} products synced`)
+		ok(`${productResult.synced} products synced`, '  ')
 
-		console.log('\nSyncing prices...')
+		info('\nSyncing prices...')
 		const priceResult = await stripeSync.syncPrices({
 			backfillRelatedEntities: true
 		})
-		console.log(`  ok ${priceResult.synced} prices synced`)
+		ok(`${priceResult.synced} prices synced`, '  ')
 
 		return {
 			priceResult: {
@@ -284,9 +287,10 @@ function mapProduct(product: Stripe.Product, target: ResolvedPullTarget) {
 
 async function pullProducts(
 	stripe: Stripe,
-	config: SupabaseConfig
+	config: SupabaseConfig,
+	dryRun: boolean
 ): Promise<ProductPullResult> {
-	console.log('\nSyncing products (active only)...')
+	info('\nSyncing products (active only)...')
 
 	let hasMore = true
 	let startingAfter: string | undefined
@@ -302,16 +306,21 @@ async function pullProducts(
 
 		for (const product of products.data) {
 			try {
-				await supabaseUpsert(
-					config,
-					TARGET_TABLES[config.target].products,
-					mapProduct(product, config.target)
-				)
+				if (!dryRun) {
+					await supabaseUpsert(
+						config,
+						TARGET_TABLES[config.target].products,
+						mapProduct(product, config.target)
+					)
+				}
 
-				console.log(`  ok ${product.id} - ${product.name}`)
+				ok(
+					`${dryRun ? 'would sync ' : ''}${product.id} - ${product.name}`,
+					'  '
+				)
 				synced++
 			} catch (err) {
-				console.error(`  FAIL ${product.id}: ${getErrorMessage(err)}`)
+				fail(`${product.id}: ${getErrorMessage(err)}`, '  ')
 				errors++
 			}
 		}
@@ -376,9 +385,10 @@ function mapPrice(
 
 async function pullPrices(
 	stripe: Stripe,
-	config: SupabaseConfig
+	config: SupabaseConfig,
+	dryRun: boolean
 ): Promise<PricePullResult> {
-	console.log('\nSyncing prices (active only)...')
+	info('\nSyncing prices (active only)...')
 
 	let hasMore = true
 	let startingAfter: string | undefined
@@ -406,16 +416,21 @@ async function pullPrices(
 					continue
 				}
 
-				await supabaseUpsert(
-					config,
-					TARGET_TABLES[config.target].prices,
-					mapPrice(price, productId, config.target)
-				)
+				if (!dryRun) {
+					await supabaseUpsert(
+						config,
+						TARGET_TABLES[config.target].prices,
+						mapPrice(price, productId, config.target)
+					)
+				}
 
-				console.log(`  ok ${price.id} - ${price.nickname ?? price.lookup_key}`)
+				ok(
+					`${dryRun ? 'would sync ' : ''}${price.id} - ${price.nickname ?? price.lookup_key}`,
+					'  '
+				)
 				synced++
 			} catch (err) {
-				console.error(`  FAIL ${price.id}: ${getErrorMessage(err)}`)
+				fail(`${price.id}: ${getErrorMessage(err)}`, '  ')
 				errors++
 			}
 		}
@@ -433,29 +448,30 @@ export async function pull(
 	stripe: Stripe,
 	options: PullOptions = {}
 ): Promise<void> {
-	console.log('=== Stripe Pull ===')
+	info('=== Stripe Pull ===')
+	if (options.dryRun) info('DRY RUN -- no Supabase writes will be made\n')
 
 	const config = await resolveSupabaseConfig(options.target ?? 'auto')
-	console.log(`Target: ${getTargetLabel(config.target)}`)
+	info(`Target: ${getTargetLabel(config.target)}`)
 
 	let priceResult: PricePullResult
 	let productResult: ProductPullResult
-	if (config.target === 'stripe-sync-engine' && config.databaseUrl) {
+	if (config.target === 'stripe-sync-engine' && config.databaseUrl && !options.dryRun) {
 		const syncResult = await pullStripeSyncEngineWithDatabase(config)
 		priceResult = syncResult.priceResult
 		productResult = syncResult.productResult
 	} else {
-		productResult = await pullProducts(stripe, config)
-		priceResult = await pullPrices(stripe, config)
+		productResult = await pullProducts(stripe, config, Boolean(options.dryRun))
+		priceResult = await pullPrices(stripe, config, Boolean(options.dryRun))
 	}
 
-	console.log('\n--- Summary ---')
-	console.log(
+	info('\n--- Summary ---')
+	info(
 		`  products: ${productResult.synced} synced, ${productResult.errors} errors`
 	)
 	const skippedStr =
 		priceResult.skipped > 0 ? ` (${priceResult.skipped} skipped)` : ''
-	console.log(
+	info(
 		`  prices: ${priceResult.synced} synced, ${priceResult.errors} errors${skippedStr}`
 	)
 

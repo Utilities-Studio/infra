@@ -46,11 +46,11 @@ All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` d
 
 | Package | Version | What it does |
 |---|---|---|
-| [`sync-env`](packages/sync-env/) | 1.1.2 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
-| [`env-encrypt`](packages/env-encrypt/) | 1.0.5 | Encrypt changed dotenvx env files only when plaintext values drift |
-| [`stripe-sync`](packages/stripe-sync/) | 1.0.3 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
-| [`vite-env`](packages/vite-env/) | 1.0.1 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
-| [`env-local`](packages/env-local/) | 1.0.2 | Generate matching local env overrides from a running local Supabase instance |
+| [`sync-env`](packages/sync-env/) | 1.1.5 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
+| [`env-encrypt`](packages/env-encrypt/) | 1.0.6 | Encrypt changed dotenvx env files only when plaintext values drift |
+| [`stripe-sync`](packages/stripe-sync/) | 1.0.4 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
+| [`vite-env`](packages/vite-env/) | 1.0.2 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
+| [`env-local`](packages/env-local/) | 1.0.3 | Generate matching local env overrides from a running local Supabase instance |
 
 ---
 
@@ -85,7 +85,12 @@ bunx @utilities-studio/sync-env                                  # both targets,
 bunx @utilities-studio/sync-env cloudflare --env development     # just Cloudflare, just dev
 bunx @utilities-studio/sync-env supabase --env production        # just Supabase, just prod
 bunx @utilities-studio/sync-env cloudflare --env-dir ../..       # monorepo: env files at root
+bunx @utilities-studio/sync-env cloudflare --dry-run --filter app
+bunx @utilities-studio/sync-env --help
+bunx @utilities-studio/sync-env --version
 ```
+
+`sync-env` also supports `--vars-only`, `--secrets-only`, and `--skip <KEY,...>` for Cloudflare-specific control.
 
 ---
 
@@ -98,6 +103,8 @@ bunx @utilities-studio/env-encrypt
 bunx @utilities-studio/env-encrypt --stage
 bunx @utilities-studio/env-encrypt --check
 bunx @utilities-studio/env-encrypt --env-dir ../..
+bunx @utilities-studio/env-encrypt --files .env,.env.preview --quiet
+bunx @utilities-studio/env-encrypt --version
 ```
 
 Output never prints secret values:
@@ -137,6 +144,10 @@ bunx @utilities-studio/stripe-sync pull --target=stripe-sync-engine
 
 # Create or update webhook endpoint
 bunx @utilities-studio/stripe-sync webhook ./scripts/stripe-config.json
+
+# Help and version
+bunx @utilities-studio/stripe-sync --help
+bunx @utilities-studio/stripe-sync --version
 ```
 
 Config lives in your project as `scripts/stripe-config.json`:
@@ -167,6 +178,9 @@ One command. Typed environment variables.
 
 ```bash
 bun --env-file=.env.development bunx @utilities-studio/vite-env
+bun --env-file=.env.development bunx @utilities-studio/vite-env --out src/env.d.ts
+bun --env-file=.env bunx @utilities-studio/vite-env --prefix PUBLIC_
+bunx @utilities-studio/vite-env --version
 ```
 
 Scans `process.env` for `VITE_*` variables and generates `src/vite-env.d.ts`:
@@ -188,6 +202,9 @@ Bootstrap local Supabase credentials with zero manual copying.
 
 ```bash
 bunx @utilities-studio/env-local
+bunx @utilities-studio/env-local --print
+bunx @utilities-studio/env-local --force
+bunx @utilities-studio/env-local --version
 ```
 
 Reads `supabase status`, extracts all connection details, derives an HMAC-SHA256 webhook secret from the JWT secret, and writes the matching local overlay:

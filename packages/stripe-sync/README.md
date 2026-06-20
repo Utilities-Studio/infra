@@ -17,8 +17,15 @@ bunx @utilities-studio/stripe-sync pull
 # Force a pull target when auto-detection is not desired
 bunx @utilities-studio/stripe-sync pull --target=stripe-sync-engine
 
+# Dry-run pull without writing to Supabase
+bunx @utilities-studio/stripe-sync pull --dry
+
 # Setup/update webhook endpoint
 bunx @utilities-studio/stripe-sync webhook ./scripts/stripe-config.json
+
+# Help and version
+bunx @utilities-studio/stripe-sync --help
+bunx @utilities-studio/stripe-sync --version
 ```
 
 ## Config Format
@@ -79,6 +86,16 @@ Create `scripts/stripe-config.json` in your project:
 | `SUPABASE_SERVICE_ROLE_KEY` | pull | Supabase admin key |
 | `SUPABASE_DB_URL` | pull | Direct Postgres URL for the `stripe-sync-engine` target |
 | `STRIPE_SYNC_TARGET` | pull | Optional target: `auto`, `public`, or `stripe-sync-engine` |
+| `WEBHOOK_URL` | webhook | Override webhook endpoint URL |
+
+## Options
+
+| Flag | Commands | Description |
+|---|---|---|
+| `--dry` | `push`, `pull`, `webhook` | Show what would change without writing |
+| `--target <target>` | `pull` | `auto`, `public`, or `stripe-sync-engine` |
+| `--yes`, `-y` | all | Skip interactive confirmations |
+| `--version` | all | Print package version |
 
 ## Requirements
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env bun
 import { parse } from '@dotenvx/dotenvx'
+import { cac } from 'cac'
 import { join, relative, resolve } from 'node:path'
 
-const ENV_FILES = ['.env', '.env.development', '.env.production'] as const
+import { banner, printVersion, readPackageVersion } from './cli-kit'
+
+const DEFAULT_ENV_FILES = ['.env', '.env.development', '.env.production'] as const
 const LOCAL_DOTENVX_BIN = join(
 	import.meta.dir,
 	'..',
@@ -21,6 +24,8 @@ export type Diff = {
 type Args = {
 	check: boolean
 	envDir: string | null
+	files: string[]
+	quiet: boolean
 	stage: boolean
 }
 
@@ -30,47 +35,108 @@ type RunResult = {
 	stdout: string
 }
 
-function usage(exitCode = 0): never {
-	console.log(`Usage: env-encrypt [options]
-
-Checks .env, .env.development, and .env.production when they exist.
-Compares each plaintext file to its matching .encrypted file.
-Encrypts only files whose parsed key/value pairs changed.
-
-Options:
-  --env-dir <path>  Directory containing env files (default: current directory)
-  --check           Compare only; exit 1 when encrypted files are out of date
-  --stage           git add changed .encrypted files after encrypting
-  -h, --help        Show help`)
-	process.exit(exitCode)
+export function parseEnvFileList(value: string): string[] {
+	return value
+		.split(',')
+		.map((file) => file.trim())
+		.filter((file) => file.length > 0)
 }
 
-function parseArgs(): Args {
-	const raw = process.argv.slice(2)
-	const args: Args = {
-		check: false,
-		envDir: null,
-		stage: false,
-	}
+function createCli() {
+	const cli = cac('env-encrypt')
+	cli.usage('[options]')
+	cli.option('--env-dir <path>', 'Directory containing env files (default: current directory)')
+	cli.option('--files <name,...>', 'Comma-separated env files to scan')
+	cli.option('--check', 'Compare only; exit 1 when encrypted files are out of date')
+	cli.option('--stage', 'git add changed .encrypted files after encrypting')
+	cli.option('-q, --quiet', 'Suppress banner and no-change output')
+	cli.option('-v, --version', 'Show version')
+	cli.example('env-encrypt')
+	cli.example('env-encrypt --stage')
+	cli.example('env-encrypt --check --files .env,.env.preview')
+	cli.help()
+	return cli
+}
 
-	for (let i = 0; i < raw.length; i++) {
-		const arg = raw[i]
+function printUsageAndExit(message: string): never {
+	console.error(message)
+	createCli().outputHelp()
+	process.exit(1)
+}
 
-		if (arg === '--check') {
-			args.check = true
-		} else if (arg === '--stage') {
-			args.stage = true
-		} else if (arg === '--env-dir' && raw[i + 1]) {
-			args.envDir = raw[++i]
-		} else if (arg === '-h' || arg === '--help') {
-			usage()
-		} else {
-			console.error(`Unknown option: ${arg}`)
-			usage(1)
+function validateRawOptions(raw: string[]): void {
+	const booleanFlags = new Set([
+		'--check',
+		'--stage',
+		'--quiet',
+		'-q',
+		'--version',
+		'-v',
+		'--help',
+		'-h',
+	])
+	const valueFlags = new Set(['--env-dir', '--files'])
+
+	for (let index = 0; index < raw.length; index++) {
+		const arg = raw[index]
+		if (!arg.startsWith('-')) {
+			printUsageAndExit(`Unexpected argument: ${arg}`)
 		}
+
+		const [flag] = arg.split('=')
+		if (booleanFlags.has(flag)) {
+			if (arg.includes('=')) printUsageAndExit(`${flag} does not accept a value`)
+			continue
+		}
+
+		if (valueFlags.has(flag)) {
+			if (arg.includes('=')) continue
+			const next = raw[index + 1]
+			if (!next || next.startsWith('-')) {
+				printUsageAndExit(`${flag} requires a value`)
+			}
+			index++
+			continue
+		}
+
+		printUsageAndExit(`Unknown option: ${flag}`)
+	}
+}
+
+function readOptionValue(
+	options: Record<string, unknown>,
+	name: string,
+): string | null {
+	const value = options[name]
+	return typeof value === 'string' && value.trim() ? value : null
+}
+
+function parseArgs(version: string): Args | null {
+	validateRawOptions(process.argv.slice(2))
+
+	const cli = createCli()
+	const parsed = cli.parse(process.argv, { run: false })
+	const options = parsed.options
+
+	if (options.help || options.h) return null
+	if (options.version || options.v) {
+		printVersion('env-encrypt', version)
+		return null
 	}
 
-	return args
+	if (parsed.args.length > 0) {
+		printUsageAndExit(`Unexpected argument: ${parsed.args[0]}`)
+	}
+
+	const filesOption = readOptionValue(options, 'files')
+
+	return {
+		check: Boolean(options.check),
+		envDir: readOptionValue(options, 'envDir'),
+		files: filesOption ? parseEnvFileList(filesOption) : [...DEFAULT_ENV_FILES],
+		quiet: Boolean(options.quiet || options.q),
+		stage: Boolean(options.stage),
+	}
 }
 
 function isCiEnvironment(): boolean {
@@ -199,7 +265,10 @@ async function stageFiles(files: string[], rootDir: string) {
 
 async function main() {
 	const start = performance.now()
-	const args = parseArgs()
+	const version = await readPackageVersion()
+	const args = parseArgs(version)
+	if (!args) return
+
 	const rootDir = process.cwd()
 	const envDir = args.envDir ? resolve(rootDir, args.envDir) : rootDir
 
@@ -213,11 +282,15 @@ async function main() {
 		return
 	}
 
+	banner('env-encrypt', version, 'Encrypt changed dotenvx files', {
+		quiet: args.quiet,
+	})
+
 	let scanned = 0
 	let outOfDate = false
 	const encryptedFilesToStage: string[] = []
 
-	for (const envName of ENV_FILES) {
+	for (const envName of args.files) {
 		const envPath = join(envDir, envName)
 		if (!(await fileExists(envPath))) continue
 
@@ -247,12 +320,14 @@ async function main() {
 		if (args.check) continue
 
 		await encryptEnvFile(envPath, encryptedPath, envDir)
-		console.log(`encrypted ${displayPath(rootDir, encryptedPath)}`)
+		if (!args.quiet) console.log(`encrypted ${displayPath(rootDir, encryptedPath)}`)
 		encryptedFilesToStage.push(encryptedPath)
 	}
 
 	if (scanned === 0) {
-		console.log('env-encrypt: no .env, .env.development, or .env.production files found.')
+		if (!args.quiet) {
+			console.log(`env-encrypt: no ${args.files.join(', ')} files found.`)
+		}
 		return
 	}
 
@@ -261,7 +336,7 @@ async function main() {
 			console.log('env-encrypt: encrypted env files are out of date.')
 			process.exit(1)
 		}
-		console.log('env-encrypt: encrypted env files are current.')
+		if (!args.quiet) console.log('env-encrypt: encrypted env files are current.')
 		return
 	}
 
@@ -273,12 +348,12 @@ async function main() {
 	}
 
 	if (!outOfDate) {
-		console.log('env-encrypt: encrypted env files are current.')
+		if (!args.quiet) console.log('env-encrypt: encrypted env files are current.')
 		return
 	}
 
 	const elapsed = ((performance.now() - start) / 1000).toFixed(1)
-	console.log(`env-encrypt: done in ${elapsed}s.`)
+	if (!args.quiet) console.log(`env-encrypt: done in ${elapsed}s.`)
 }
 
 if (import.meta.main) {

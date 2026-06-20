@@ -20,6 +20,16 @@ bunx @utilities-studio/sync-env supabase --env production
 # Single project -- sync both targets, both environments
 bunx @utilities-studio/sync-env
 
+# Preview Cloudflare changes without writing wrangler.jsonc or pushing secrets
+bunx @utilities-studio/sync-env cloudflare --dry-run
+
+# Sync one discovered app config in a monorepo
+bunx @utilities-studio/sync-env cloudflare --filter app-name
+
+# Show help/version
+bunx @utilities-studio/sync-env --help
+bunx @utilities-studio/sync-env --version
+
 # Monorepo -- auto-discovers apps/*/wrangler.jsonc, env files at root
 bunx @utilities-studio/sync-env cloudflare --env development
 
@@ -41,6 +51,12 @@ Env files (`.env.development`, `.env.production`) are read from the current dire
 | `supabase` | Sync to Supabase Edge Functions | Both targets |
 | `--env <name>` | Target environment (development/production) | Both |
 | `--env-dir <path>` | Directory containing `.env.*` files | Current directory |
+| `--dry-run`, `-n` | Preview changes without writing files or pushing secrets | Off |
+| `--filter <name>` | Restrict discovered Cloudflare configs by directory match | All configs |
+| `--vars-only` | Write only Cloudflare vars to `wrangler.jsonc` | Off |
+| `--secrets-only` | Push only Cloudflare secrets | Off |
+| `--skip <KEY,...>` | Exclude additional Cloudflare keys | Built-in skip list |
+| `--version` | Print package version | -- |
 
 ## Requirements
 
