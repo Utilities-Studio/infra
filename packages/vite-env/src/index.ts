@@ -8,6 +8,8 @@ const DEFAULT_OUT_FILE = join('src', 'vite-env.d.ts')
 const DEFAULT_PREFIX = 'VITE_'
 
 type Args = {
+	envDir: string | null
+	envFile: string | null
 	out: string
 	prefix: string
 }
@@ -15,7 +17,9 @@ type Args = {
 function createCli() {
 	const cli = cac('vite-env')
 	cli.usage('[options]')
-	cli.option('--out <file>', 'Output declaration file', {
+	cli.option('--env-dir <path>', 'Directory containing env files (default: current directory)')
+	cli.option('--env-file <file>', 'Env file to read variables from, for example .env.development')
+	cli.option('--output <file>', 'Output declaration file', {
 		default: DEFAULT_OUT_FILE,
 	})
 	cli.option('--prefix <prefix>', 'Environment variable prefix to scan', {
@@ -23,7 +27,8 @@ function createCli() {
 	})
 	cli.option('-v, --version', 'Show version')
 	cli.example('vite-env')
-	cli.example('vite-env --out src/env.d.ts --prefix PUBLIC_')
+	cli.example('vite-env --env-file .env.development')
+	cli.example('vite-env --output src/env.d.ts --prefix PUBLIC_')
 	cli.help()
 	return cli
 }
@@ -36,7 +41,14 @@ function printUsageAndExit(message: string): never {
 
 function validateRawOptions(raw: string[]): void {
 	const booleanFlags = new Set(['--version', '-v', '--help', '-h'])
-	const valueFlags = new Set(['--out', '--prefix'])
+	// --out is kept as a hidden alias of --output for backward compatibility.
+	const valueFlags = new Set([
+		'--env-dir',
+		'--env-file',
+		'--output',
+		'--out',
+		'--prefix',
+	])
 
 	for (let index = 0; index < raw.length; index++) {
 		const arg = raw[index]
@@ -93,20 +105,60 @@ function parseArgs(version: string): Args | null {
 	const prefix = readOptionValue(options, 'prefix', DEFAULT_PREFIX)
 	if (!prefix) printUsageAndExit('--prefix cannot be empty')
 
+	// cac exposes --env-dir as options.envDir, --env-file as options.envFile,
+	// and --output as options.output (always populated, defaulting to
+	// DEFAULT_OUT_FILE). The --out alias is undeclared, so options.out is only
+	// present when the user actually passed it — prefer it when set.
+	const out =
+		optionalString(options.out) ??
+		readOptionValue(options, 'output', DEFAULT_OUT_FILE)
+
 	return {
-		out: readOptionValue(options, 'out', DEFAULT_OUT_FILE),
+		envDir: optionalString(options.envDir),
+		envFile: optionalString(options.envFile),
+		out,
 		prefix,
 	}
 }
 
-async function detectEnvFile(rootDir: string): Promise<string | null> {
-	const envDev = join(rootDir, '.env.development')
-	const envRoot = join(rootDir, '.env')
+function optionalString(value: unknown): string | null {
+	return typeof value === 'string' && value.trim() ? value : null
+}
+
+async function detectEnvFile(envDir: string): Promise<string | null> {
+	const envDev = join(envDir, '.env.development')
+	const envRoot = join(envDir, '.env')
 	return (await Bun.file(envDev).exists())
 		? envDev
 		: (await Bun.file(envRoot).exists())
 			? envRoot
 			: null
+}
+
+function envKeyFromLine(line: string): string | null {
+	const trimmed = line.trimStart()
+	const assignment = trimmed.startsWith('export ')
+		? trimmed.slice('export '.length).trimStart()
+		: trimmed
+	const match = assignment.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/)
+
+	return match?.[1] ?? null
+}
+
+/** Extract declared variable names from a dotenv file body, in file order. */
+export function envKeysFromFile(src: string): string[] {
+	const keys: string[] = []
+	const seen = new Set<string>()
+
+	for (const line of src.split(/\r?\n/)) {
+		const key = envKeyFromLine(line)
+		if (key && !seen.has(key)) {
+			seen.add(key)
+			keys.push(key)
+		}
+	}
+
+	return keys
 }
 
 export function envKeysForPrefix(
@@ -116,6 +168,10 @@ export function envKeysForPrefix(
 	return Object.keys(env)
 		.filter((key) => key.startsWith(prefix))
 		.sort()
+}
+
+function filterByPrefix(keys: string[], prefix: string): string[] {
+	return [...new Set(keys.filter((key) => key.startsWith(prefix)))].sort()
 }
 
 export function renderViteEnvDeclaration(keys: string[]): string {
@@ -144,14 +200,37 @@ async function main() {
 	banner('vite-env', version, 'Generate typed env declarations')
 
 	const rootDir = process.cwd()
-	const envFile = await detectEnvFile(rootDir)
+	const envDir = args.envDir ? resolve(rootDir, args.envDir) : rootDir
+
+	// Resolve which env file (if any) to read variable names from. An explicit
+	// --env-file wins; otherwise fall back to the .env.development / .env probe.
+	let envFile: string | null = null
+	if (args.envFile) {
+		envFile = resolve(envDir, args.envFile)
+		if (!(await Bun.file(envFile).exists())) {
+			fail(`Env file not found: ${relative(rootDir, envFile) || args.envFile}`)
+			process.exit(1)
+		}
+	} else {
+		envFile = await detectEnvFile(envDir)
+	}
 
 	if (!envFile) {
 		info('Skipping vite-env generation (no .env.development or .env found)')
 		return
 	}
 
-	const keys = envKeysForPrefix(process.env, args.prefix)
+	// File-first: read variable names from the env file itself. Fall back to
+	// process.env so the legacy `bun --env-file=... bunx vite-env` flow still
+	// works when no file is present on disk.
+	const fileKeys = filterByPrefix(
+		envKeysFromFile(await Bun.file(envFile).text()),
+		args.prefix,
+	)
+	const keys =
+		fileKeys.length > 0
+			? fileKeys
+			: envKeysForPrefix(process.env, args.prefix)
 
 	if (keys.length === 0) {
 		info(`No ${args.prefix} environment variables found, skipping generation`)
