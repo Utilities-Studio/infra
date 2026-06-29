@@ -321,10 +321,13 @@ jobs:
       deploy_migrations: true
       deploy_seeds: false
       deploy_functions: true
+      skip_project_config_push: false
     secrets:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
 ```
+
+Set `skip_project_config_push: true` when a project should deploy migrations or functions without running `supabase config push --yes`.
 
 ### Claude Code Review
 

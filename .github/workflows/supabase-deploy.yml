@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: true
+      skip_project_config_push:
+        description: 'Skip supabase config push'
+        required: false
+        type: boolean
+        default: false
       working_directory:
         description: 'Working directory for the project'
         required: false
@@ -125,6 +130,7 @@ jobs:
         run: bunx @utilities-studio/sync-env@latest supabase ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }}
 
       - name: Push project config
+        if: ${{ !inputs.skip_project_config_push }}
         run: supabase config push --yes
 
       - name: Deploy database migrations
