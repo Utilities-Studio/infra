@@ -2,7 +2,6 @@
 	"name": "@utilities-studio/sync-env",
 	"version": "1.1.5",
 	"description": "Sync environment variables to Cloudflare Workers and Supabase Edge Functions",
-	"type": "module",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Utilities-Studio/infra",
@@ -11,13 +10,24 @@
 	"bin": {
 		"sync-env": "src/index.ts"
 	},
-	"exports": {
-		".": "./src/index.ts",
-		"./secret-keys": "./src/secret-keys.ts"
-	},
 	"files": [
+		"dist",
 		"src"
 	],
+	"type": "module",
+	"exports": {
+		"./secret-keys": {
+			"types": "./dist/secret-keys.d.ts",
+			"import": "./dist/secret-keys.js",
+			"require": "./dist/secret-keys.cjs"
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "tsup src/secret-keys.ts --format esm,cjs --dts --out-dir dist --clean"
+	},
 	"dependencies": {
 		"@clack/prompts": "^1.7.0",
 		"cac": "^7.0.0",
@@ -26,9 +36,9 @@
 		"picocolors": "^1.1.1"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.3.14"
-	},
-	"publishConfig": {
-		"access": "public"
+		"@types/bun": "^1.3.14",
+		"oxlint-tsgolint": "^0.24.0",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3"
 	}
 }

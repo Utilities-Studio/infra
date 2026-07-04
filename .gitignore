@@ -4,6 +4,10 @@ node_modules/
 # Bun
 bun.lockb
 
+# Build output
+packages/*/.tmp/
+packages/*/dist/
+
 # IDE
 .idea/
 .vscode/

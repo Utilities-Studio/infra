@@ -111,7 +111,7 @@ const DEFAULT_CF_SKIP_KEYS = new Set([
 	'DOTENV_PUBLIC_KEY',
 	'DOTENV_PUBLIC_KEY_DEVELOPMENT',
 	'DOTENV_PUBLIC_KEY_PRODUCTION',
-	'NODE_OPTIONS',
+	'NODE_OPTIONS'
 ])
 
 async function discoverWranglerConfigs(rootDir: string): Promise<string[]> {

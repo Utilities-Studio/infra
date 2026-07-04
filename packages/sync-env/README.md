@@ -71,6 +71,17 @@ classifyEnvKey('PUBLIC_REFRESH_TOKEN')
 // { isPublic: true, isSecret: true, reason: 'hard secret marker' }
 ```
 
+The `secret-keys` subpath is published as JavaScript for Node and Pulumi usage.
+It supports ESM imports and CommonJS `require()`:
+
+```js
+import { isSecretKey } from '@utilities-studio/sync-env/secret-keys'
+```
+
+```js
+const { isSecretKey } = require('@utilities-studio/sync-env/secret-keys')
+```
+
 Hard secret markers win over public markers. For example, `PUBLIC_REFRESH_TOKEN`
 and `VITE_INTERNAL_SECRET` are still treated as secrets. Browser/public markers
 include `VITE_`, `NEXT_PUBLIC_`, `NUXT_PUBLIC_`, `PUBLIC_`, `EXPO_PUBLIC_`,

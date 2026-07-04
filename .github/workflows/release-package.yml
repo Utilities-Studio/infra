@@ -144,6 +144,14 @@ jobs:
           fi
           echo "version=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Build package
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            bun run build
+          else
+            echo "No build script, skipping."
+          fi
+
       - name: Publish to npm
         run: npm publish --access public
 
