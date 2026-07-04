@@ -75,7 +75,7 @@ Reads decrypted `.env.*` files, splits vars from secrets, and pushes them where 
  (vars)   (secrets)              (vars)   (secrets)
 ```
 
-**Smart secret detection** -- variables matching `SECRET`, `API_KEY`, `TOKEN`, `PASSWORD`, `PRIVATE` patterns are separated and uploaded as secrets. Everything else goes to `wrangler.jsonc` as plain vars.
+**Smart secret detection** -- variables are classified by the reusable `@utilities-studio/sync-env/secret-keys` helper. Browser/public markers such as `VITE_`, `NEXT_PUBLIC_`, `PUBLIC_`, `PUBLISHABLE`, `PUBLIC_KEY`, and `SITE_KEY` stay as vars unless they also contain a hard secret marker. Credentials such as `SECRET`, `TOKEN`, `API_KEY`, `ACCESS_KEY`, `SERVICE_ROLE`, database URLs, connection strings, private keys, signing keys, encryption keys, HMAC keys, passwords, and restricted keys are uploaded as secrets.
 
 **Monorepo support** -- when no root `wrangler.jsonc` exists, auto-discovers `apps/*/wrangler.jsonc` and `packages/*/wrangler.jsonc`. Each target synced independently.
 

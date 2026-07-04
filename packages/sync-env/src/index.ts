@@ -5,16 +5,8 @@ import { cac } from 'cac'
 import { parse as parseJsonc } from 'jsonc-parser'
 import { dirname, join, relative, resolve } from 'node:path'
 
-import {
-	banner,
-	fail,
-	info,
-	isInteractive,
-	ok,
-	printVersion,
-	readPackageVersion,
-	step,
-} from './cli-kit'
+import { banner, fail, info, isInteractive, ok, printVersion, readPackageVersion, step } from './cli-kit'
+import { isSecretKey } from './secret-keys'
 
 const ENVIRONMENTS = ['development', 'production'] as const
 const TARGETS = ['cloudflare', 'supabase'] as const
@@ -60,7 +52,7 @@ function expandVars(vars: Record<string, string>): Record<string, string> {
 async function loadEnvFiles(
 	envDir: string,
 	tier: EnvTier,
-	requestedEnvs: Environment[],
+	requestedEnvs: Environment[]
 ): Promise<Record<string, Record<string, string>>> {
 	const envVars: Record<string, Record<string, string>> = {}
 
@@ -87,33 +79,18 @@ async function loadEnvFiles(
 	return envVars
 }
 
-function isSecretKey(key: string): boolean {
-	if (key.startsWith('VITE_') || key.startsWith('PUBLISHABLE')) return false
-	return (
-		key.includes('SECRET') ||
-		key.includes('API_KEY') ||
-		key.includes('TOKEN') ||
-		key.includes('SERVICE_ROLE_KEY') ||
-		key.includes('PRIVATE_KEY') ||
-		key.includes('PASSWORD')
-	)
-}
-
 async function run(cmd: string, cwd: string): Promise<{ ok: boolean; output: string }> {
 	const proc = Bun.spawn(['sh', '-c', cmd], { cwd, stdout: 'pipe', stderr: 'pipe' })
 	const stdout = await new Response(proc.stdout).text()
 	const stderr = await new Response(proc.stderr).text()
 	const exitCode = await proc.exited
-	return exitCode === 0
-		? { ok: true, output: stdout }
-		: { ok: false, output: stderr || stdout }
+	return exitCode === 0 ? { ok: true, output: stdout } : { ok: false, output: stderr || stdout }
 }
 
 async function scanEdgeFunctionEnvKeys(rootDir: string): Promise<Set<string>> {
 	const functionsDir = join(rootDir, 'supabase/functions')
 	const keys = new Set<string>()
-	const envGetPattern =
-		/\bDeno\s*\.\s*env\s*\.\s*get\s*\(\s*['"]([^'"]+)['"]\s*\)/g
+	const envGetPattern = /\bDeno\s*\.\s*env\s*\.\s*get\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 	const glob = new Bun.Glob('**/*.{ts,js}')
 
 	try {
@@ -135,8 +112,6 @@ const DEFAULT_CF_SKIP_KEYS = new Set([
 	'DOTENV_PUBLIC_KEY_DEVELOPMENT',
 	'DOTENV_PUBLIC_KEY_PRODUCTION',
 	'NODE_OPTIONS',
-	'SUPABASE_ACCESS_TOKEN',
-	'SUPABASE_DB_URL',
 ])
 
 async function discoverWranglerConfigs(rootDir: string): Promise<string[]> {
@@ -174,11 +149,7 @@ function globToRegExp(pattern: string): RegExp {
 	return new RegExp(escaped)
 }
 
-export function filterWranglerConfigs(
-	configs: string[],
-	rootDir: string,
-	filter: string | null,
-): string[] {
+export function filterWranglerConfigs(configs: string[], rootDir: string, filter: string | null): string[] {
 	if (!filter) return configs
 
 	const matcher = filter.includes('*') ? globToRegExp(filter) : null
@@ -188,10 +159,7 @@ export function filterWranglerConfigs(
 	})
 }
 
-function selectCloudflareVars(
-	allVars: Record<string, string>,
-	skipKeys: Set<string>,
-): Record<string, string> {
+function selectCloudflareVars(allVars: Record<string, string>, skipKeys: Set<string>): Record<string, string> {
 	const vars: Record<string, string> = {}
 	for (const [key, value] of Object.entries(allVars)) {
 		if (!value || skipKeys.has(key) || isSecretKey(key)) continue
@@ -200,14 +168,9 @@ function selectCloudflareVars(
 	return vars
 }
 
-function selectCloudflareSecrets(
-	allVars: Record<string, string>,
-	skipKeys: Set<string>,
-): Record<string, string> {
+function selectCloudflareSecrets(allVars: Record<string, string>, skipKeys: Set<string>): Record<string, string> {
 	return Object.fromEntries(
-		Object.entries(allVars).filter(
-			([key, value]) => value && isSecretKey(key) && !skipKeys.has(key),
-		),
+		Object.entries(allVars).filter(([key, value]) => value && isSecretKey(key) && !skipKeys.has(key))
 	)
 }
 
@@ -220,7 +183,7 @@ async function syncCloudflareForConfig(
 	wranglerPath: string,
 	envVars: Record<string, Record<string, string>>,
 	rootDir: string,
-	options: CloudflareOptions,
+	options: CloudflareOptions
 ) {
 	const displayPath = relative(rootDir, wranglerPath) || 'wrangler.jsonc'
 	info(`\n  -- ${displayPath} --`)
@@ -273,10 +236,7 @@ async function syncCloudflareForConfig(
 		await Bun.write(tmpFile, JSON.stringify(secrets))
 
 		const envFlag = env === 'root' ? '' : ` --env ${env}`
-		const result = await run(
-			`bunx wrangler versions secret bulk ${tmpFile}${envFlag}`,
-			wranglerDir,
-		)
+		const result = await run(`bunx wrangler versions secret bulk ${tmpFile}${envFlag}`, wranglerDir)
 
 		const { unlink } = await import('node:fs/promises')
 		await unlink(tmpFile)
@@ -294,7 +254,7 @@ async function syncCloudflareForConfig(
 async function syncCloudflare(
 	envVars: Record<string, Record<string, string>>,
 	rootDir: string,
-	options: CloudflareOptions,
+	options: CloudflareOptions
 ) {
 	info('\n-- Cloudflare ---------------------------------------\n')
 
@@ -305,7 +265,7 @@ async function syncCloudflare(
 		info(
 			options.filter
 				? `  No wrangler.jsonc matched --filter ${options.filter}. Skipping Cloudflare sync.`
-				: '  No wrangler.jsonc found. Skipping Cloudflare sync.',
+				: '  No wrangler.jsonc found. Skipping Cloudflare sync.'
 		)
 		return
 	}
@@ -322,7 +282,7 @@ async function syncCloudflare(
 async function syncSupabase(
 	envVars: Record<string, Record<string, string>>,
 	rootDir: string,
-	options: { dryRun: boolean },
+	options: { dryRun: boolean }
 ) {
 	const edgeKeys = await scanEdgeFunctionEnvKeys(rootDir)
 
@@ -343,8 +303,7 @@ async function syncSupabase(
 		}
 
 		const entries = Object.entries(vars).filter(
-			([key, value]) =>
-				edgeKeys.has(key) && value && !key.startsWith('SUPABASE_'),
+			([key, value]) => edgeKeys.has(key) && value && !key.startsWith('SUPABASE_')
 		)
 
 		if (entries.length === 0) {
@@ -353,16 +312,16 @@ async function syncSupabase(
 		}
 
 		if (options.dryRun) {
-			const keys = entries.map(([key]) => key).sort().join(', ')
+			const keys = entries
+				.map(([key]) => key)
+				.sort()
+				.join(', ')
 			info(`  ${env}: dry-run would set ${entries.length} secrets (${keys})`)
 			continue
 		}
 
 		const pairs = entries.map(([key, value]) => `${key}=${value}`)
-		const result = await run(
-			`bunx supabase secrets set ${pairs.join(' ')} --project-ref ${projectId}`,
-			rootDir,
-		)
+		const result = await run(`bunx supabase secrets set ${pairs.join(' ')} --project-ref ${projectId}`, rootDir)
 
 		if (result.ok) {
 			info(`  ${env}: ok (${entries.length} secrets)`)
@@ -399,16 +358,7 @@ function printUsageAndExit(message: string): never {
 }
 
 function validateRawOptions(raw: string[]): void {
-	const booleanFlags = new Set([
-		'--dry-run',
-		'-n',
-		'--vars-only',
-		'--secrets-only',
-		'--version',
-		'-v',
-		'--help',
-		'-h',
-	])
+	const booleanFlags = new Set(['--dry-run', '-n', '--vars-only', '--secrets-only', '--version', '-v', '--help', '-h'])
 	const valueFlags = new Set(['--env', '--env-dir', '--filter', '--skip'])
 
 	for (let index = 0; index < raw.length; index++) {
@@ -450,10 +400,7 @@ function valuesForOption(raw: string[], longFlag: string): string[] {
 	return values
 }
 
-function readOptionValue(
-	options: Record<string, unknown>,
-	name: string,
-): string | null {
+function readOptionValue(options: Record<string, unknown>, name: string): string | null {
 	const value = options[name]
 	return typeof value === 'string' && value.trim() ? value : null
 }
@@ -463,7 +410,7 @@ async function promptTargetsAndEnvs(): Promise<Pick<ParsedArgs, 'envs' | 'target
 		message: 'Select sync targets',
 		options: TARGETS.map((target) => ({ label: target, value: target })),
 		initialValues: [...TARGETS],
-		required: true,
+		required: true
 	})
 	if (isCancel(targetAnswer)) process.exit(1)
 
@@ -471,13 +418,13 @@ async function promptTargetsAndEnvs(): Promise<Pick<ParsedArgs, 'envs' | 'target
 		message: 'Select environments',
 		options: ENVIRONMENTS.map((env) => ({ label: env, value: env })),
 		initialValues: [...ENVIRONMENTS],
-		required: true,
+		required: true
 	})
 	if (isCancel(envAnswer)) process.exit(1)
 
 	return {
 		envs: envAnswer,
-		targets: targetAnswer,
+		targets: targetAnswer
 	}
 }
 
@@ -508,22 +455,18 @@ async function parseArgs(version: string): Promise<ParsedArgs | null> {
 			explicitEnv: true,
 			filter: null,
 			mode: 'all',
-			skipKeys: new Set(DEFAULT_CF_SKIP_KEYS),
+			skipKeys: new Set(DEFAULT_CF_SKIP_KEYS)
 		}
 	}
 
 	const targets = parsed.args.map(String)
-	const invalidTarget = targets.find(
-		(target): target is string => !TARGETS.includes(target as Target),
-	)
+	const invalidTarget = targets.find((target): target is string => !TARGETS.includes(target as Target))
 	if (invalidTarget) {
 		printUsageAndExit(`Invalid target "${invalidTarget}". Expected: ${TARGETS.join(', ')}`)
 	}
 
 	const envValues = valuesForOption(raw, '--env')
-	const invalidEnv = envValues.find(
-		(env): env is string => !ENVIRONMENTS.includes(env as Environment),
-	)
+	const invalidEnv = envValues.find((env): env is string => !ENVIRONMENTS.includes(env as Environment))
 	if (invalidEnv) {
 		printUsageAndExit(`Invalid --env "${invalidEnv}". Expected: ${ENVIRONMENTS.join(', ')}`)
 	}
@@ -545,7 +488,7 @@ async function parseArgs(version: string): Promise<ParsedArgs | null> {
 		filter: readOptionValue(options, 'filter'),
 		mode: options.varsOnly ? 'vars' : options.secretsOnly ? 'secrets' : 'all',
 		skipKeys,
-		targets: targets.length > 0 ? (targets as Target[]) : [...TARGETS],
+		targets: targets.length > 0 ? (targets as Target[]) : [...TARGETS]
 	}
 }
 
@@ -593,7 +536,7 @@ async function main() {
 			dryRun: args.dryRun,
 			filter: args.filter,
 			mode: args.mode,
-			skipKeys: args.skipKeys,
+			skipKeys: args.skipKeys
 		})
 	}
 

@@ -3,7 +3,7 @@
 Sync environment variables to Cloudflare Workers and Supabase Edge Functions.
 
 - Reads decrypted `.env.{environment}` files
-- Splits vars vs secrets (secrets contain `SECRET`, `API_KEY`, `TOKEN`, etc.)
+- Splits vars vs secrets using a reusable env-key classifier
 - **Cloudflare**: writes vars to `wrangler.jsonc`, uploads secrets via `wrangler versions secret bulk`
 - **Supabase**: auto-scans `Deno.env.get()` calls in edge functions, syncs only used secrets
 - **Monorepo support**: auto-discovers `apps/*/wrangler.jsonc` when no root `wrangler.jsonc` exists
@@ -57,6 +57,29 @@ Env files (`.env.development`, `.env.production`) are read from the current dire
 | `--secrets-only` | Push only Cloudflare secrets | Off |
 | `--skip <KEY,...>` | Exclude additional Cloudflare keys | Built-in skip list |
 | `--version` | Print package version | -- |
+
+## Reusable secret detection
+
+`sync-env` exports the same key classifier used by the CLI:
+
+```ts
+import { classifyEnvKey, hasPublicEnvMarker, isSecretKey } from '@utilities-studio/sync-env/secret-keys'
+
+isSecretKey('AWS_SECRET_ACCESS_KEY') // true
+isSecretKey('VITE_SUPABASE_PUBLISHABLE_KEY') // false
+classifyEnvKey('PUBLIC_REFRESH_TOKEN')
+// { isPublic: true, isSecret: true, reason: 'hard secret marker' }
+```
+
+Hard secret markers win over public markers. For example, `PUBLIC_REFRESH_TOKEN`
+and `VITE_INTERNAL_SECRET` are still treated as secrets. Browser/public markers
+include `VITE_`, `NEXT_PUBLIC_`, `NUXT_PUBLIC_`, `PUBLIC_`, `EXPO_PUBLIC_`,
+`REACT_APP_`, `PUBLISHABLE`, `PUBLIC_KEY`, and `SITE_KEY`.
+
+Secret markers cover common credentials including `SECRET`, `TOKEN`, `API_KEY`,
+`ACCESS_KEY`, `SERVICE_ROLE`, `PASSWORD`, database URLs, connection strings,
+private keys, signing keys, encryption keys, HMAC keys, credentials, and
+restricted keys.
 
 ## Requirements
 

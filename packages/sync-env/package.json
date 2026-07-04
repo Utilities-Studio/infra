@@ -11,6 +11,10 @@
 	"bin": {
 		"sync-env": "src/index.ts"
 	},
+	"exports": {
+		".": "./src/index.ts",
+		"./secret-keys": "./src/secret-keys.ts"
+	},
 	"files": [
 		"src"
 	],
