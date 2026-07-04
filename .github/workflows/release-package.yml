@@ -20,6 +20,7 @@ on:
           - env-local
           - env-encrypt
           - vite-env
+          - github-env
           - stripe-sync
 
 permissions:
@@ -49,7 +50,7 @@ jobs:
         id: changed
         run: |
           if [ "${{ inputs.package }}" == "all" ]; then
-            CHANGED='["sync-env","env-local","env-encrypt","vite-env","stripe-sync"]'
+            CHANGED='["sync-env","env-local","env-encrypt","vite-env","github-env","stripe-sync"]'
           elif [ -n "${{ inputs.package }}" ]; then
             CHANGED='["${{ inputs.package }}"]'
           else
@@ -92,7 +93,7 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false  # never use caching in release builds
+          package-manager-cache: false # never use caching in release builds
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

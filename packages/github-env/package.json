@@ -1,15 +1,15 @@
 {
-	"name": "@utilities-studio/env-encrypt",
-	"version": "1.0.6",
-	"description": "Encrypt changed dotenvx env files only when plaintext values drift",
+	"name": "@utilities-studio/github-env",
+	"version": "1.0.0",
+	"description": "Load dotenv files into GitHub Actions environment and step outputs",
 	"type": "module",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Utilities-Studio/infra",
-		"directory": "packages/env-encrypt"
+		"directory": "packages/github-env"
 	},
 	"bin": {
-		"env-encrypt": "src/index.ts"
+		"github-env": "src/index.ts"
 	},
 	"files": [
 		"src"

@@ -7,7 +7,7 @@
     The infrastructure layer behind every <a href="https://github.com/Utilities-Studio">Utilities Studio</a> project.
   </p>
   <p align="center">
-    <code>5 packages</code> &middot; <code>8 workflows</code> &middot; <code>3 platforms</code> &middot; <code>zero config</code>
+    <code>6 packages</code> &middot; <code>8 workflows</code> &middot; <code>3 platforms</code> &middot; <code>zero config</code>
   </p>
 </p>
 
@@ -27,7 +27,7 @@
 ```
 +--------------------------------------------------------------------------+
 |                                                                          |
-|   One monorepo. Four npm packages. Eight reusable workflows.             |
+|   One monorepo. Six npm packages. Eight reusable workflows.              |
 |                                                                          |
 |   Sync env vars. Deploy Workers. Deploy Pages. Deploy Supabase.          |
 |   Push Stripe config. Pull to Supabase. Auto-publish on change.          |
@@ -48,6 +48,7 @@ All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` d
 |---|---|---|
 | [`sync-env`](packages/sync-env/) | 1.1.5 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
 | [`env-encrypt`](packages/env-encrypt/) | 1.0.6 | Encrypt changed dotenvx env files only when plaintext values drift |
+| [`github-env`](packages/github-env/) | 1.0.0 | Load dotenv files into GitHub Actions env and explicit step outputs |
 | [`stripe-sync`](packages/stripe-sync/) | 1.0.4 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
 | [`vite-env`](packages/vite-env/) | 1.0.2 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
 | [`env-local`](packages/env-local/) | 1.0.3 | Generate matching local env overrides from a running local Supabase instance |
@@ -125,6 +126,36 @@ When `CI=true` or `GITHUB_ACTIONS=true`, `--stage` exits successfully without sc
 
 ---
 
+## github-env
+
+Load dotenv files into GitHub Actions `$GITHUB_ENV` and explicit step outputs.
+
+```bash
+bunx @utilities-studio/github-env --environment production
+bunx @utilities-studio/github-env --environment production --outputs AWS_REGION,AWS_ACCOUNT_ID
+bunx @utilities-studio/github-env --env-file config/smoke.env --outputs AWS_REGION
+bunx @utilities-studio/github-env --env-dir apps/web --environment development --outputs VITE_SITE_URL
+```
+
+By default, `github-env` writes all parsed application keys to `$GITHUB_ENV` and
+writes no `$GITHUB_OUTPUT` values. Outputs are allow-listed with `--outputs`, and
+output names are lowercased (`AWS_REGION` becomes `aws_region`).
+
+```yaml
+- name: Load smoke env
+  id: smoke-env
+  run: >
+    bunx @utilities-studio/github-env
+    --environment "${{ inputs.environment }}"
+    --outputs AWS_REGION,AWS_ACCOUNT_ID,VITE_MCP_URL,VITE_SITE_URL
+```
+
+The CLI parses dotenv content as data, ignores dotenvx metadata keys, and fails
+closed for GitHub-reserved keys such as `GITHUB_*`, `RUNNER_*`, `ACTIONS_*`, and
+`NODE_OPTIONS`.
+
+---
+
 ## stripe-sync
 
 Declarative Stripe management. Define products/prices in JSON, sync bidirectionally.
@@ -187,8 +218,8 @@ Scans `process.env` for `VITE_*` variables and generates `src/vite-env.d.ts`:
 
 ```typescript
 interface ImportMetaEnv {
-  readonly VITE_SUPABASE_URL: string
-  readonly VITE_SITE_URL: string
+  readonly VITE_SUPABASE_URL: string;
+  readonly VITE_SITE_URL: string;
 }
 ```
 
@@ -251,6 +282,7 @@ All workflows are reusable (`workflow_call`). Call them from any repo.
 | [`supabase-deploy`](.github/workflows/supabase-deploy.yml) | Supabase (migrations + optional seeds + edge functions) | -- | -- |
 
 All deployment workflows:
+
 - Detect env tier automatically (single vs multi)
 - Decrypt env files via dotenvx
 - Post deployment status as PR comments
@@ -383,6 +415,9 @@ infra/
 │   │   ├── src/index.ts
 │   │   └── package.json
 │   ├── env-encrypt/           Compare and encrypt dotenvx env files
+│   │   ├── src/index.ts
+│   │   └── package.json
+│   ├── github-env/            Load env files into GitHub Actions command files
 │   │   ├── src/index.ts
 │   │   └── package.json
 │   ├── stripe-sync/           Stripe <-> Supabase product sync
