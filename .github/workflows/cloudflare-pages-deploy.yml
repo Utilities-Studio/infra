@@ -177,7 +177,7 @@ jobs:
 
       - name: Load env vars
         if: steps.env-tier.outputs.tier != 'none'
-        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''

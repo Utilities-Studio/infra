@@ -17,6 +17,7 @@ describe("deploy workflow env loading", () => {
 
       expect(workflow).toContain("bunx @utilities-studio/github-env@latest");
       expect(workflow).toContain('--env-file "${{ steps.env-file.outputs.path }}"');
+      expect(workflow).toContain("--skip-reserved");
     });
   }
 

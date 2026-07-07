@@ -19,6 +19,7 @@ bunx @utilities-studio/github-env --env-dir apps/web --environment development -
 - Lowercases output names, so `AWS_REGION` becomes `aws_region`.
 - Fails when a requested output key is missing.
 - Fails closed for GitHub-reserved keys such as `GITHUB_*`, `RUNNER_*`, `ACTIONS_*`, and `NODE_OPTIONS`.
+- Can skip GitHub-reserved keys with `--skip-reserved` for deploy workflows that need to load mixed app/runtime env files.
 
 Dotenvx metadata keys such as `DOTENV_PUBLIC_KEY` and `DOTENV_PRIVATE_KEY` are ignored.
 
@@ -49,14 +50,15 @@ Requested outputs are available from the step id:
 
 ## Options
 
-| Option | Description |
-|---|---|
-| `--environment <name>` | Reads `.env.<name>` from `--env-dir` or the current directory. |
-| `--env-dir <path>` | Directory containing env files. Defaults to the current directory. |
-| `--env-file <file>` | Explicit env file to read, relative to `--env-dir`. Cannot be used with `--environment`. |
-| `--outputs <KEY,...>` | Comma-separated env keys to also expose as step outputs. No defaults. |
-| `-q, --quiet` | Suppress banner and success output. |
-| `-v, --version` | Print the package version. |
+| Option                 | Description                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `--environment <name>` | Reads `.env.<name>` from `--env-dir` or the current directory.                           |
+| `--env-dir <path>`     | Directory containing env files. Defaults to the current directory.                       |
+| `--env-file <file>`    | Explicit env file to read, relative to `--env-dir`. Cannot be used with `--environment`. |
+| `--outputs <KEY,...>`  | Comma-separated env keys to also expose as step outputs. No defaults.                    |
+| `--skip-reserved`      | Skip GitHub-reserved env keys such as `NODE_OPTIONS` instead of failing.                 |
+| `-q, --quiet`          | Suppress banner and success output.                                                      |
+| `-v, --version`        | Print the package version.                                                               |
 
 ## Security notes
 

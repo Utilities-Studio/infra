@@ -163,7 +163,7 @@ jobs:
       - name: Load env vars
         if: steps.env-tier.outputs.tier != 'none'
         working-directory: ${{ env.INSTALL_DIR }}
-        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}

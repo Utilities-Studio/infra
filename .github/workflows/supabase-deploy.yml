@@ -106,7 +106,7 @@ jobs:
           echo "path=$FILE" >> "$GITHUB_OUTPUT"
 
       - name: Load env vars
-        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2
