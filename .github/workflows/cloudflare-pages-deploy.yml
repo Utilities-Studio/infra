@@ -4,33 +4,33 @@ on:
   workflow_call:
     inputs:
       project_name:
-        description: 'Cloudflare Pages project name'
+        description: "Cloudflare Pages project name"
         required: true
         type: string
       working_directory:
-        description: 'Working directory for the project'
+        description: "Working directory for the project"
         required: false
         type: string
-        default: '.'
+        default: "."
       build_output_directory:
-        description: 'Directory containing build output'
+        description: "Directory containing build output"
         required: false
         type: string
-        default: 'dist'
+        default: "dist"
       pre_deploy_commands:
-        description: 'Commands to run before build'
+        description: "Commands to run before build"
         required: false
         type: string
       build_mode:
-        description: 'Override Vite build mode (e.g. preview, development, production). Skips auto-detection when set.'
+        description: "Override Vite build mode (e.g. preview, development, production). Skips auto-detection when set."
         required: false
         type: string
       deploy_branch:
-        description: 'Override Cloudflare Pages deploy branch. Defaults to pr-<number> for PRs, main otherwise.'
+        description: "Override Cloudflare Pages deploy branch. Defaults to pr-<number> for PRs, main otherwise."
         required: false
         type: string
       account_id:
-        description: 'Cloudflare account ID'
+        description: "Cloudflare account ID"
         required: true
         type: string
     secrets:
@@ -49,7 +49,7 @@ permissions:
   deployments: write
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   deploy:
@@ -80,7 +80,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
@@ -141,10 +141,6 @@ jobs:
             echo "tier=none" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run pre-deploy commands
-        if: inputs.pre_deploy_commands != ''
-        run: ${{ inputs.pre_deploy_commands }}
-
       - name: Compute build mode
         id: build-mode
         run: |
@@ -164,6 +160,28 @@ jobs:
           else
             echo "mode=production" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve env file
+        id: env-file
+        if: steps.env-tier.outputs.tier != 'none'
+        run: |
+          if [ "${{ steps.env-tier.outputs.tier }}" = "single" ]; then
+            FILE=".env"
+          else
+            FILE=".env.${{ steps.build-mode.outputs.mode }}"
+          fi
+          if [ ! -f "$FILE" ]; then
+            echo "Error: $FILE not found" && exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Load env vars
+        if: steps.env-tier.outputs.tier != 'none'
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
+
+      - name: Run pre-deploy commands
+        if: inputs.pre_deploy_commands != ''
+        run: ${{ inputs.pre_deploy_commands }}
 
       - name: Build
         run: bun run build ${{ steps.build-mode.outputs.mode != '' && format('-- --mode {0}', steps.build-mode.outputs.mode) || '' }}

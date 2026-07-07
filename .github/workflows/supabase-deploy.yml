@@ -4,35 +4,35 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Environment to deploy (omit for single-env projects)'
+        description: "Environment to deploy (omit for single-env projects)"
         required: false
         type: string
-        default: ''
+        default: ""
       deploy_migrations:
-        description: 'Deploy database migrations'
+        description: "Deploy database migrations"
         required: false
         type: boolean
         default: true
       deploy_seeds:
-        description: 'Apply configured Supabase seed SQL during database deploy'
+        description: "Apply configured Supabase seed SQL during database deploy"
         required: false
         type: boolean
         default: false
       deploy_functions:
-        description: 'Deploy edge functions'
+        description: "Deploy edge functions"
         required: false
         type: boolean
         default: true
       skip_project_config_push:
-        description: 'Skip supabase config push'
+        description: "Skip supabase config push"
         required: false
         type: boolean
         default: false
       working_directory:
-        description: 'Working directory for the project'
+        description: "Working directory for the project"
         required: false
         type: string
-        default: '.'
+        default: "."
     secrets:
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
@@ -45,7 +45,7 @@ permissions:
   contents: write
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   deploy:
@@ -76,7 +76,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
@@ -106,17 +106,7 @@ jobs:
           echo "path=$FILE" >> "$GITHUB_OUTPUT"
 
       - name: Load env vars
-        run: |
-          while IFS= read -r line; do
-            [[ -z "$line" || "$line" =~ ^# ]] && continue
-            key="${line%%=*}"
-            value="${line#*=}"
-            value="${value%\"}"
-            value="${value#\"}"
-            [[ "$key" =~ ^(DOTENV_|NODE_OPTIONS|VITE_) ]] && continue
-            echo "::add-mask::$value"
-            echo "$key=$value" >> "$GITHUB_ENV"
-          done < ${{ steps.env-file.outputs.path }}
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v2

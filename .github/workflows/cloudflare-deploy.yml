@@ -4,31 +4,31 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Wrangler environment (omit for single-env projects)'
+        description: "Wrangler environment (omit for single-env projects)"
         required: false
         type: string
-        default: ''
+        default: ""
       working_directory:
-        description: 'Working directory for wrangler deploy'
+        description: "Working directory for wrangler deploy"
         required: false
         type: string
-        default: '.'
+        default: "."
       install_directory:
-        description: 'Directory for bun install and env files (monorepo root). Defaults to working_directory.'
+        description: "Directory for bun install and env files (monorepo root). Defaults to working_directory."
         required: false
         type: string
-        default: ''
+        default: ""
       pre_deploy_commands:
-        description: 'Commands to run before build'
+        description: "Commands to run before build"
         required: false
         type: string
       skip_build:
-        description: 'Skip build step'
+        description: "Skip build step"
         required: false
         type: boolean
         default: false
       skip_sync_env:
-        description: 'Skip sync-env step'
+        description: "Skip sync-env step"
         required: false
         type: boolean
         default: false
@@ -47,7 +47,7 @@ permissions:
   pull-requests: write
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   deploy:
@@ -73,7 +73,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
@@ -136,6 +136,34 @@ jobs:
           else
             echo "tier=none" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve env file
+        id: env-file
+        if: steps.env-tier.outputs.tier != 'none'
+        working-directory: ${{ env.INSTALL_DIR }}
+        run: |
+          if [ "${{ steps.env-tier.outputs.tier }}" = "single" ]; then
+            FILE=".env"
+          else
+            ENVIRONMENT="${{ inputs.environment }}"
+            if [ -z "$ENVIRONMENT" ]; then
+              if [ "${{ env.IS_PREVIEW }}" = "true" ]; then
+                ENVIRONMENT="development"
+              else
+                ENVIRONMENT="production"
+              fi
+            fi
+            FILE=".env.$ENVIRONMENT"
+          fi
+          if [ ! -f "$FILE" ]; then
+            echo "Error: $FILE not found" && exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Load env vars
+        if: steps.env-tier.outputs.tier != 'none'
+        working-directory: ${{ env.INSTALL_DIR }}
+        run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --quiet
 
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}
