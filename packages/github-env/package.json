@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/github-env",
-	"version": "2.0.0",
+	"version": "1.0.1",
 	"description": "Load dotenv files into GitHub Actions environment and step outputs",
 	"type": "module",
 	"repository": {
