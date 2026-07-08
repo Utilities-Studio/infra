@@ -7,7 +7,6 @@ on:
         description: "Environment to deploy (omit for single-env projects)"
         required: false
         type: string
-        default: ""
       deploy_migrations:
         description: "Deploy database migrations"
         required: false
@@ -117,7 +116,13 @@ jobs:
         run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_ID }}
 
       - name: Sync edge function secrets
-        run: bunx @utilities-studio/sync-env@latest supabase ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }}
+        run: |
+          ENVIRONMENT="${{ inputs.environment }}"
+          if [ -n "$ENVIRONMENT" ]; then
+            bunx @utilities-studio/sync-env@latest supabase --env "$ENVIRONMENT"
+          else
+            bunx @utilities-studio/sync-env@latest supabase
+          fi
 
       - name: Push project config
         if: ${{ !inputs.skip_project_config_push }}
@@ -125,9 +130,12 @@ jobs:
 
       - name: Deploy database migrations
         if: inputs.deploy_migrations
-        env:
-          SUPABASE_SEED_FLAG: ${{ inputs.deploy_seeds && '--include-seed' || '' }}
-        run: supabase db push --include-all $SUPABASE_SEED_FLAG --yes
+        run: |
+          if [ "${{ inputs.deploy_seeds }}" = "true" ]; then
+            supabase db push --include-all --include-seed --yes
+          else
+            supabase db push --include-all --yes
+          fi
 
       - name: Deploy edge functions
         if: inputs.deploy_functions
