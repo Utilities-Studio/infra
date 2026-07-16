@@ -1,4 +1,4 @@
-name: Deploy Supabase
+name: Shared · Deploy Supabase
 
 on:
   workflow_call:
@@ -32,6 +32,11 @@ on:
         required: false
         type: string
         default: "."
+      post_deploy_commands:
+        description: "Trusted static commands to run after a successful deployment"
+        required: false
+        type: string
+        default: ""
     secrets:
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
@@ -48,6 +53,7 @@ env:
 
 jobs:
   deploy:
+    name: Deploy Supabase
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -68,7 +74,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -77,13 +83,18 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Setup bun
+      - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
+
+      - name: Restore Bun dependency cache
+        uses: actions/cache@v6
         with:
-          bun-version: latest
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ steps.bun.outputs.bun-version }}-${{ hashFiles(format('{0}/bun.lock', inputs.working_directory), format('{0}/bun.lockb', inputs.working_directory)) }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun ci
         env:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
@@ -108,7 +119,7 @@ jobs:
         run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v2
+        uses: supabase/setup-cli@v3
         with:
           version: latest
 
@@ -140,6 +151,10 @@ jobs:
       - name: Deploy edge functions
         if: inputs.deploy_functions
         run: supabase functions deploy
+
+      - name: Run post-deploy commands
+        if: inputs.post_deploy_commands != ''
+        run: ${{ inputs.post_deploy_commands }}
 
       - name: Tag deployment
         env:

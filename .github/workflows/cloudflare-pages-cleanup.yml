@@ -1,4 +1,4 @@
-name: Cleanup Cloudflare Pages Previews
+name: Shared · Clean Up Cloudflare Pages Previews
 
 on:
   workflow_call:
@@ -22,6 +22,7 @@ env:
 
 jobs:
   cleanup:
+    name: Clean Up Cloudflare Pages Previews
     if: github.event.pull_request.number != '' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5

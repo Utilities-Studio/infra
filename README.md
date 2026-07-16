@@ -285,8 +285,14 @@ All deployment workflows:
 
 - Detect env tier automatically (single vs multi)
 - Decrypt env files via dotenvx
+- Restore Bun's global dependency cache from the caller's lockfile, then run `bun ci`
 - Post deployment status as PR comments
 - Gate production deploys behind GitHub environments
+
+The Cloudflare Workers and Supabase workflows also accept `post_deploy_commands` for trusted, static
+caller-owned commands that must run in the same environment job after a successful deploy. Cloudflare preview
+deploys never run the hook. Do not interpolate pull request titles, branch names, or other untrusted event data
+into this input.
 
 ### Cleanup
 

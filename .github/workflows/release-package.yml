@@ -1,4 +1,5 @@
-name: Release Package
+name: Release Packages
+run-name: Release Packages · ${{ inputs.package || 'changed packages' }}
 
 on:
   push:
@@ -24,8 +25,7 @@ on:
           - stripe-sync
 
 permissions:
-  id-token: write  # Required for OIDC
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -36,6 +36,7 @@ concurrency:
 
 jobs:
   detect:
+    name: Detect Packages to Release
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -61,10 +62,14 @@ jobs:
           echo "Changed packages: $CHANGED"
 
   release:
+    name: Publish · ${{ matrix.package }}
     needs: detect
     if: needs.detect.outputs.packages != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
+      id-token: write
 
     strategy:
       matrix:
@@ -83,7 +88,8 @@ jobs:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup bun
+      - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -93,10 +99,15 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false # never use caching in release builds
+
+      - name: Restore Bun dependency cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ steps.bun.outputs.bun-version }}-${{ hashFiles(format('packages/{0}/bun.lock', matrix.package), format('packages/{0}/bun.lockb', matrix.package)) }}
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun ci
 
       - name: Type check
         run: bunx tsc --noEmit

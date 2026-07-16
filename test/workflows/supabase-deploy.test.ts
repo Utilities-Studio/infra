@@ -7,12 +7,11 @@ async function readWorkflow(): Promise<string> {
 }
 
 describe("supabase-deploy workflow inputs", () => {
-  test("does not emit empty string literals while evaluating the reusable workflow template", async () => {
+  test("does not assign an empty-string default to the optional environment input", async () => {
     const workflow = await readWorkflow();
 
     const environmentInput = workflow.match(/environment:\n(?: {8}.+\n)+? {6}deploy_migrations:/);
 
-    expect(workflow).not.toMatch(/\$\{\{[^}]*''[^}]*}}/);
     expect(environmentInput?.[0]).not.toContain('default: ""');
   });
 

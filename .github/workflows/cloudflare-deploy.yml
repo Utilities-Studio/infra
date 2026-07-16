@@ -1,4 +1,4 @@
-name: Deploy Cloudflare Workers
+name: Shared · Deploy Cloudflare Worker
 
 on:
   workflow_call:
@@ -22,6 +22,11 @@ on:
         description: "Commands to run before build"
         required: false
         type: string
+      post_deploy_commands:
+        description: "Trusted static commands to run from the install directory after a successful non-preview deploy"
+        required: false
+        type: string
+        default: ""
       skip_build:
         description: "Skip build step"
         required: false
@@ -51,6 +56,7 @@ env:
 
 jobs:
   deploy:
+    name: Deploy Cloudflare Worker
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -66,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || '' }}
 
@@ -75,12 +81,17 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Setup bun
+      - name: Setup Bun
+        id: bun
         uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
-      - name: Comment -- deploy started
+      - name: Restore Bun dependency cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ steps.bun.outputs.bun-version }}-${{ hashFiles(format('{0}/bun.lock', inputs.install_directory || inputs.working_directory), format('{0}/bun.lockb', inputs.install_directory || inputs.working_directory)) }}
+
+      - name: Comment on pull request · Deploy started
         if: env.IS_PREVIEW == 'true'
         uses: actions/github-script@v9
         with:
@@ -119,7 +130,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.INSTALL_DIR }}
-        run: bun install --frozen-lockfile
+        run: bun ci
         env:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
@@ -214,6 +225,11 @@ jobs:
           workingDirectory: ${{ inputs.working_directory }}
           packageManager: bun
 
+      - name: Run post-deploy commands
+        if: env.IS_PREVIEW != 'true' && inputs.post_deploy_commands != ''
+        working-directory: ${{ env.INSTALL_DIR }}
+        run: ${{ inputs.post_deploy_commands }}
+
       - name: Extract preview URL
         if: env.IS_PREVIEW == 'true' && success()
         id: preview-url
@@ -223,7 +239,7 @@ jobs:
           URL="${ALIAS_URL:-$DEPLOY_URL}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
-      - name: Comment -- preview live
+      - name: Comment on pull request · Preview live
         if: env.IS_PREVIEW == 'true' && success()
         uses: actions/github-script@v9
         env:
@@ -262,7 +278,7 @@ jobs:
               });
             }
 
-      - name: Comment -- deploy failed
+      - name: Comment on pull request · Deploy failed
         if: env.IS_PREVIEW == 'true' && failure()
         uses: actions/github-script@v9
         with:
