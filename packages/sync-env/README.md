@@ -7,6 +7,7 @@ Sync environment variables to Cloudflare Workers and Supabase Edge Functions.
 - **Cloudflare**: writes vars to `wrangler.jsonc`, uploads secrets via `wrangler versions secret bulk`
 - **Supabase**: auto-scans `Deno.env.get()` calls in edge functions, syncs only used secrets
 - **Monorepo support**: auto-discovers `apps/*/wrangler.jsonc` when no root `wrangler.jsonc` exists
+- **Failure safety**: exits nonzero on provider failure and preserves complete provider diagnostics with secret values redacted
 
 ## Usage
 

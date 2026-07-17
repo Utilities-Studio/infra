@@ -33,6 +33,11 @@ type CloudflareOptions = {
 	skipKeys: Set<string>
 }
 
+type CommandResult = {
+	exitCode: number
+	output: string
+}
+
 async function detectTier(envDir: string): Promise<EnvTier> {
 	const hasDev = await Bun.file(join(envDir, '.env.development')).exists()
 	const hasProd = await Bun.file(join(envDir, '.env.production')).exists()
@@ -79,12 +84,43 @@ async function loadEnvFiles(
 	return envVars
 }
 
-async function run(cmd: string, cwd: string): Promise<{ ok: boolean; output: string }> {
-	const proc = Bun.spawn(['sh', '-c', cmd], { cwd, stdout: 'pipe', stderr: 'pipe' })
-	const stdout = await new Response(proc.stdout).text()
-	const stderr = await new Response(proc.stderr).text()
-	const exitCode = await proc.exited
-	return exitCode === 0 ? { ok: true, output: stdout } : { ok: false, output: stderr || stdout }
+async function run(command: string[], cwd: string, stdin?: Blob): Promise<CommandResult> {
+	const proc = Bun.spawn(command, { cwd, stdin, stdout: 'pipe', stderr: 'pipe' })
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited
+	])
+
+	return {
+		exitCode,
+		output: [stdout.trim(), stderr.trim()].filter(Boolean).join('\n')
+	}
+}
+
+function redactSecretValues(output: string, environment: Record<string, string>): string {
+	const secretValues = Object.entries({ ...process.env, ...environment })
+		.filter((entry): entry is [string, string] => {
+			const [key, value] = entry
+			return Boolean(value && value.length >= 4 && isSecretKey(key))
+		})
+		.map(([, value]) => value)
+		.sort((left, right) => right.length - left.length)
+
+	let redacted = output
+	for (const value of secretValues) redacted = redacted.replaceAll(value, '[REDACTED]')
+	return redacted
+}
+
+function commandFailure(
+	platform: 'Cloudflare' | 'Supabase',
+	target: string,
+	result: CommandResult,
+	environment: Record<string, string>
+): Error {
+	const output = redactSecretValues(result.output, environment)
+	const details = output ? `\n${output}` : ''
+	return new Error(`${platform} sync failed for ${target} with exit code ${result.exitCode}.${details}`)
 }
 
 async function scanEdgeFunctionEnvKeys(rootDir: string): Promise<Set<string>> {
@@ -232,21 +268,15 @@ async function syncCloudflareForConfig(
 			continue
 		}
 
-		const tmpFile = join(wranglerDir, `.cf-secrets-${env}.json`)
-		await Bun.write(tmpFile, JSON.stringify(secrets))
+		const command = ['bunx', 'wrangler', 'versions', 'secret', 'bulk']
+		if (env !== 'root') command.push('--env', env)
+		const result = await run(command, wranglerDir, new Blob([JSON.stringify(secrets)]))
 
-		const envFlag = env === 'root' ? '' : ` --env ${env}`
-		const result = await run(`bunx wrangler versions secret bulk ${tmpFile}${envFlag}`, wranglerDir)
-
-		const { unlink } = await import('node:fs/promises')
-		await unlink(tmpFile)
-
-		if (result.ok) {
+		if (result.exitCode === 0) {
 			info(`      ${env}: ok (${count} secrets)`)
 			for (const key of Object.keys(secrets)) ok(key, '        ')
 		} else {
-			info(`      ${env}: FAIL`)
-			info(`        ${result.output.split('\n')[0]}`)
+			throw commandFailure('Cloudflare', `${displayPath} (${env})`, result, allVars)
 		}
 	}
 }
@@ -321,14 +351,13 @@ async function syncSupabase(
 		}
 
 		const pairs = entries.map(([key, value]) => `${key}=${value}`)
-		const result = await run(`bunx supabase secrets set ${pairs.join(' ')} --project-ref ${projectId}`, rootDir)
+		const result = await run(['bunx', 'supabase', 'secrets', 'set', ...pairs, '--project-ref', projectId], rootDir)
 
-		if (result.ok) {
+		if (result.exitCode === 0) {
 			info(`  ${env}: ok (${entries.length} secrets)`)
 			for (const [key] of entries) ok(key, '    ')
 		} else {
-			info(`  ${env}: FAIL`)
-			info(`    ${result.output.split('\n')[0]}`)
+			throw commandFailure('Supabase', env, result, vars)
 		}
 	}
 }
