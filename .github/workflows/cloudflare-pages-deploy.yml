@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: "."
+      concurrency_key:
+        description: "Unique deployment target key"
+        required: false
+        type: string
+        default: ""
       build_output_directory:
         description: "Directory containing build output"
         required: false
@@ -58,7 +63,7 @@ jobs:
     timeout-minutes: 5
 
     concurrency:
-      group: cf-pages-${{ inputs.project_name }}-${{ inputs.deploy_branch || github.event.pull_request.number || 'production' }}-${{ github.repository }}
+      group: cf-pages-${{ inputs.concurrency_key || inputs.project_name }}-${{ inputs.deploy_branch || github.event.pull_request.number || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
     environment:

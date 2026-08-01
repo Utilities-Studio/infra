@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "."
+      concurrency_key:
+        description: "Unique deployment target key"
+        required: false
+        type: string
+        default: ""
       install_directory:
         description: "Directory for bun install and env files (monorepo root). Defaults to working_directory."
         required: false
@@ -61,7 +66,7 @@ jobs:
     timeout-minutes: 5
 
     concurrency:
-      group: cf-workers-${{ inputs.working_directory }}-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
+      group: cf-workers-${{ inputs.concurrency_key || inputs.working_directory }}-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
       cancel-in-progress: ${{ github.event.pull_request.number != '' }}
 
     environment: ${{ github.event.pull_request.number == '' && (inputs.environment || 'production') || '' }}

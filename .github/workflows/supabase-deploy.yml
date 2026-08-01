@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 20
 
     concurrency:
-      group: supabase-deploy-${{ inputs.environment || 'default' }}-${{ github.repository }}
+      group: supabase-deploy-${{ inputs.concurrency_key || inputs.working_directory }}-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
       cancel-in-progress: false
 
     environment: ${{ inputs.environment || 'production' }}
