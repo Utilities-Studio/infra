@@ -21,6 +21,25 @@ describe("deploy workflow env loading", () => {
     });
   }
 
+  test("cloudflare-deploy checks the Worker exists before sync-env", async () => {
+    const workflow = await readWorkflow(".github/workflows/cloudflare-deploy.yml");
+
+    expect(workflow.indexOf("ensure-cloudflare-worker@main")).toBeLessThan(
+      workflow.indexOf("bunx @utilities-studio/sync-env@latest cloudflare"),
+    );
+    expect(workflow.indexOf("bunx @utilities-studio/sync-env@latest cloudflare")).toBeLessThan(
+      workflow.indexOf("command: deploy"),
+    );
+  });
+
+  test("cloudflare-pages-deploy checks the Pages project exists before deploy", async () => {
+    const workflow = await readWorkflow(".github/workflows/cloudflare-pages-deploy.yml");
+
+    expect(workflow.indexOf("ensure-cloudflare-pages@main")).toBeLessThan(
+      workflow.indexOf("command: pages deploy"),
+    );
+  });
+
   test("supabase project config push can see VITE vars from the resolved env file", async () => {
     const workflow = await readWorkflow(".github/workflows/supabase-deploy.yml");
 

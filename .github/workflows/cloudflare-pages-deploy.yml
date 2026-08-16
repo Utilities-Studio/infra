@@ -190,6 +190,14 @@ jobs:
         if: steps.env-tier.outputs.tier != 'none'
         run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
+      - name: Ensure Cloudflare Pages project exists
+        uses: Utilities-Studio/infra/.github/actions/ensure-cloudflare-pages@main
+        with:
+          api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          account_id: ${{ inputs.account_id }}
+          project_name: ${{ inputs.project_name }}
+          working_directory: ${{ inputs.working_directory }}
+
       - name: Run pre-deploy commands
         if: inputs.pre_deploy_commands != ''
         run: ${{ inputs.pre_deploy_commands }}

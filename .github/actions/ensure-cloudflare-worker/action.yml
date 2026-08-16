@@ -1,0 +1,26 @@
+name: Ensure Cloudflare Worker exists
+description: GET the Worker script; PUT a hello-world stub if it is missing
+
+inputs:
+  api_token:
+    description: Cloudflare API token
+    required: true
+  environment:
+    description: Wrangler environment name
+    required: false
+    default: ""
+  working_directory:
+    description: Directory containing wrangler.jsonc
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Ensure Worker exists
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api_token }}
+        CLOUDFLARE_ENV: ${{ inputs.environment }}
+      run: bun "${{ github.action_path }}/../../scripts/ensure-cloudflare-worker.ts"

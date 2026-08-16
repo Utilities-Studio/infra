@@ -181,6 +181,14 @@ jobs:
         working-directory: ${{ env.INSTALL_DIR }}
         run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
+      - name: Ensure Cloudflare Worker exists
+        if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}
+        uses: Utilities-Studio/infra/.github/actions/ensure-cloudflare-worker@main
+        with:
+          api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          environment: ${{ inputs.environment }}
+          working_directory: ${{ inputs.working_directory }}
+
       - name: Push secrets to Cloudflare
         if: ${{ !inputs.skip_sync_env && steps.env-tier.outputs.tier != 'none' }}
         working-directory: ${{ inputs.working_directory }}
