@@ -283,11 +283,20 @@ All workflows are reusable (`workflow_call`). Call them from any repo.
 
 All deployment workflows:
 
-- Detect env tier automatically (single vs multi)
-- Decrypt env files via dotenvx
+- Detect Infisical (OIDC) or dotenvx, then write `.env` / `.env.development` / `.env.production`
+- Detect env tier automatically (single vs multi) from those files
 - Restore Bun's global dependency cache from the caller's lockfile, then run `bun ci`
 - Post deployment status as PR comments
 - Gate production deploys behind GitHub environments
+
+Env files are created by [`.github/actions/ensure-env-files`](.github/actions/ensure-env-files/action.yml) after `bun ci`:
+
+1. **Infisical** if `infisical_identity_id` or `vars.INFISICAL_IDENTITY_ID` is set (GitHub OIDC; caller must grant `id-token: write`). GitHub `environment` `development`/`production` → Infisical env of the same name and `.env.{environment}`. No `environment` → Infisical `production` and `.env`.
+2. **dotenvx** if `.env*.encrypted` files exist
+3. **existing** if plaintext `.env*` files are already present
+4. **none** otherwise (sync/build skip as today)
+
+Later steps are unchanged: they still read `.env`, `.env.development`, or `.env.production`. Infisical folder defaults to the job `working_directory` (`containers/directus` → `/containers/directus`, `.` → `/`). Override with `infisical_secret_path` only when the Infisical folder does not match the repo path. Caller vars: `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, optional `INFISICAL_DOMAIN`.
 
 The Cloudflare Workers and Supabase workflows also accept `post_deploy_commands` for trusted, static
 caller-owned commands that must run in the same environment job after a successful deploy. Cloudflare preview

@@ -1,0 +1,178 @@
+name: Ensure env files
+description: Detect Infisical or dotenvx and write .env, .env.development, or .env.production for later steps
+
+inputs:
+  working_directory:
+    description: Directory that holds env files (install / repo root)
+    required: false
+    default: "."
+  environment:
+    description: GitHub environment name. Set → .env.{environment}. Empty → .env (Infisical uses production).
+    required: false
+    default: ""
+  infisical_identity_id:
+    description: Infisical machine identity ID (OIDC). Empty falls back to dotenvx.
+    required: false
+    default: ""
+  infisical_project_slug:
+    description: Infisical project slug
+    required: false
+    default: ""
+  infisical_env_slug:
+    description: Infisical environment slug. Defaults to GitHub environment, or production when that is empty.
+    required: false
+    default: ""
+  infisical_directory:
+    description: Repo directory to map to an Infisical folder. Defaults to working_directory.
+    required: false
+    default: ""
+  infisical_secret_path:
+    description: Infisical folder path. Empty uses / plus infisical_directory (or working_directory).
+    required: false
+    default: ""
+  infisical_domain:
+    description: Infisical instance URL
+    required: false
+    default: "https://app.infisical.com"
+  infisical_recursive:
+    description: Include subfolders of infisical_secret_path
+    required: false
+    default: "false"
+  dotenv_private_key_development:
+    description: dotenvx key for .env.development.encrypted
+    required: false
+    default: ""
+  dotenv_private_key_production:
+    description: dotenvx key for .env.production.encrypted
+    required: false
+    default: ""
+  dotenv_private_key:
+    description: dotenvx key for .env.encrypted
+    required: false
+    default: ""
+
+outputs:
+  source:
+    description: infisical, dotenvx, existing, or none
+    value: ${{ steps.detect.outputs.source }}
+  file:
+    description: Env file path relative to working_directory
+    value: ${{ steps.detect.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect env source
+      id: detect
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        INFISICAL_IDENTITY_ID: ${{ inputs.infisical_identity_id }}
+        INFISICAL_PROJECT_SLUG: ${{ inputs.infisical_project_slug }}
+        INFISICAL_ENV_SLUG: ${{ inputs.infisical_env_slug }}
+        INFISICAL_SECRET_PATH: ${{ inputs.infisical_secret_path }}
+        INFISICAL_DIRECTORY: ${{ inputs.infisical_directory }}
+        WORKDIR: ${{ inputs.working_directory }}
+      run: |
+        set -eu
+
+        if [ -n "$ENVIRONMENT" ]; then
+          FILE=".env.$ENVIRONMENT"
+        else
+          FILE=".env"
+        fi
+        echo "file=$FILE" >> "$GITHUB_OUTPUT"
+
+        WORKSPACE_REL="$FILE"
+        if [ "$WORKDIR" != "." ] && [ -n "$WORKDIR" ]; then
+          WORKSPACE_REL="${WORKDIR%/}/$FILE"
+        fi
+        echo "workspace-file=/$WORKSPACE_REL" >> "$GITHUB_OUTPUT"
+
+        SLUG="${INFISICAL_ENV_SLUG:-${ENVIRONMENT:-production}}"
+        echo "env-slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+        if [ -n "$INFISICAL_SECRET_PATH" ]; then
+          SECRET_PATH="$INFISICAL_SECRET_PATH"
+        else
+          DIR="${INFISICAL_DIRECTORY:-$WORKDIR}"
+          DIR="${DIR#./}"
+          DIR="${DIR%/}"
+          if [ -z "$DIR" ] || [ "$DIR" = "." ]; then
+            SECRET_PATH="/"
+          else
+            SECRET_PATH="/$DIR"
+          fi
+        fi
+        echo "secret-path=$SECRET_PATH" >> "$GITHUB_OUTPUT"
+
+        if [ -n "$INFISICAL_IDENTITY_ID" ]; then
+          if [ -z "$INFISICAL_PROJECT_SLUG" ]; then
+            echo "::error::Infisical identity is set but project slug is missing (input infisical_project_slug or var INFISICAL_PROJECT_SLUG)."
+            exit 1
+          fi
+          echo "source=infisical" >> "$GITHUB_OUTPUT"
+          echo "Env source: infisical env=$SLUG file=$FILE path=$SECRET_PATH"
+          exit 0
+        fi
+
+        if [ -f .env.encrypted ] || [ -f .env.development.encrypted ] || [ -f .env.production.encrypted ]; then
+          echo "source=dotenvx" >> "$GITHUB_OUTPUT"
+          echo "Env source: dotenvx -> $FILE"
+          exit 0
+        fi
+
+        if [ -f .env ] || [ -f .env.development ] || [ -f .env.production ]; then
+          echo "source=existing" >> "$GITHUB_OUTPUT"
+          echo "Env source: existing files"
+          exit 0
+        fi
+
+        echo "source=none" >> "$GITHUB_OUTPUT"
+        echo "Env source: none"
+
+    - name: Fetch secrets from Infisical
+      if: steps.detect.outputs.source == 'infisical'
+      uses: Infisical/secrets-action@v1.0.16
+      with:
+        method: oidc
+        identity-id: ${{ inputs.infisical_identity_id }}
+        project-slug: ${{ inputs.infisical_project_slug }}
+        env-slug: ${{ steps.detect.outputs.env-slug }}
+        secret-path: ${{ steps.detect.outputs.secret-path }}
+        recursive: ${{ inputs.infisical_recursive == 'true' }}
+        domain: ${{ inputs.infisical_domain }}
+        export-type: file
+        file-output-path: ${{ steps.detect.outputs.workspace-file }}
+
+    - name: Decrypt dotenvx env files
+      if: steps.detect.outputs.source == 'dotenvx'
+      working-directory: ${{ inputs.working_directory }}
+      shell: bash
+      env:
+        DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.dotenv_private_key_development }}
+        DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.dotenv_private_key_production }}
+        DOTENV_PRIVATE_KEY: ${{ inputs.dotenv_private_key }}
+      run: |
+        set -eu
+
+        decrypt() {
+          encrypted="$1"
+          dest="$2"
+          key="$3"
+          key_name="$4"
+          if [ ! -f "$encrypted" ]; then
+            return 0
+          fi
+          if [ -z "$key" ]; then
+            echo "::error::$key_name is required to decrypt $encrypted"
+            exit 1
+          fi
+          DOTENV_PRIVATE_KEY="$key" bunx --bun @dotenvx/dotenvx decrypt -f "$encrypted" --stdout > "$dest"
+          chmod 600 "$dest"
+        }
+
+        decrypt .env.encrypted .env "$DOTENV_PRIVATE_KEY" DOTENV_PRIVATE_KEY
+        decrypt .env.development.encrypted .env.development "$DOTENV_PRIVATE_KEY_DEVELOPMENT" DOTENV_PRIVATE_KEY_DEVELOPMENT
+        decrypt .env.production.encrypted .env.production "$DOTENV_PRIVATE_KEY_PRODUCTION" DOTENV_PRIVATE_KEY_PRODUCTION

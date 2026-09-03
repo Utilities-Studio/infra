@@ -37,6 +37,36 @@ on:
         required: false
         type: string
         default: ""
+      infisical_identity_id:
+        description: "Infisical machine identity ID (OIDC). Falls back to vars.INFISICAL_IDENTITY_ID."
+        required: false
+        type: string
+        default: ""
+      infisical_project_slug:
+        description: "Infisical project slug. Falls back to vars.INFISICAL_PROJECT_SLUG."
+        required: false
+        type: string
+        default: ""
+      infisical_env_slug:
+        description: "Infisical environment slug. Defaults to this workflow's environment input."
+        required: false
+        type: string
+        default: ""
+      infisical_secret_path:
+        description: "Infisical folder path. Defaults to / plus working_directory."
+        required: false
+        type: string
+        default: ""
+      infisical_domain:
+        description: "Infisical instance URL. Falls back to vars.INFISICAL_DOMAIN."
+        required: false
+        type: string
+        default: ""
+      infisical_recursive:
+        description: "Include Infisical subfolders of infisical_secret_path"
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
@@ -47,6 +77,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -99,6 +130,22 @@ jobs:
           DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
           DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
           DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
+
+      - name: Ensure env files
+        uses: Utilities-Studio/infra/.github/actions/ensure-env-files@main
+        with:
+          working_directory: ${{ inputs.working_directory }}
+          environment: ${{ inputs.environment }}
+          infisical_identity_id: ${{ inputs.infisical_identity_id || vars.INFISICAL_IDENTITY_ID }}
+          infisical_project_slug: ${{ inputs.infisical_project_slug || vars.INFISICAL_PROJECT_SLUG }}
+          infisical_env_slug: ${{ inputs.infisical_env_slug || inputs.environment }}
+          infisical_directory: ${{ inputs.working_directory }}
+          infisical_secret_path: ${{ inputs.infisical_secret_path }}
+          infisical_domain: ${{ inputs.infisical_domain || vars.INFISICAL_DOMAIN || 'https://app.infisical.com' }}
+          infisical_recursive: ${{ inputs.infisical_recursive }}
+          dotenv_private_key_development: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
+          dotenv_private_key_production: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
+          dotenv_private_key: ${{ secrets.DOTENV_PRIVATE_KEY }}
 
       - name: Resolve env file
         id: env-file
