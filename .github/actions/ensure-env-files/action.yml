@@ -10,46 +10,6 @@ inputs:
     description: GitHub environment name. Set → .env.{environment}. Empty → .env (Infisical uses production).
     required: false
     default: ""
-  infisical_identity_id:
-    description: Infisical machine identity ID (OIDC). Empty falls back to dotenvx.
-    required: false
-    default: ""
-  infisical_project_slug:
-    description: Infisical project slug
-    required: false
-    default: ""
-  infisical_env_slug:
-    description: Infisical environment slug. Defaults to GitHub environment, or production when that is empty.
-    required: false
-    default: ""
-  infisical_directory:
-    description: Repo directory to map to an Infisical folder. Defaults to working_directory.
-    required: false
-    default: ""
-  infisical_secret_path:
-    description: Infisical folder path. Empty uses / plus infisical_directory (or working_directory).
-    required: false
-    default: ""
-  infisical_domain:
-    description: Infisical instance URL
-    required: false
-    default: "https://app.infisical.com"
-  infisical_recursive:
-    description: Include subfolders of infisical_secret_path
-    required: false
-    default: "false"
-  dotenv_private_key_development:
-    description: dotenvx key for .env.development.encrypted
-    required: false
-    default: ""
-  dotenv_private_key_production:
-    description: dotenvx key for .env.production.encrypted
-    required: false
-    default: ""
-  dotenv_private_key:
-    description: dotenvx key for .env.encrypted
-    required: false
-    default: ""
 
 outputs:
   source:
@@ -68,11 +28,6 @@ runs:
       shell: bash
       env:
         ENVIRONMENT: ${{ inputs.environment }}
-        INFISICAL_IDENTITY_ID: ${{ inputs.infisical_identity_id }}
-        INFISICAL_PROJECT_SLUG: ${{ inputs.infisical_project_slug }}
-        INFISICAL_ENV_SLUG: ${{ inputs.infisical_env_slug }}
-        INFISICAL_SECRET_PATH: ${{ inputs.infisical_secret_path }}
-        INFISICAL_DIRECTORY: ${{ inputs.infisical_directory }}
         WORKDIR: ${{ inputs.working_directory }}
       run: |
         set -eu
@@ -93,23 +48,12 @@ runs:
         SLUG="${INFISICAL_ENV_SLUG:-${ENVIRONMENT:-production}}"
         echo "env-slug=$SLUG" >> "$GITHUB_OUTPUT"
 
-        if [ -n "$INFISICAL_SECRET_PATH" ]; then
-          SECRET_PATH="$INFISICAL_SECRET_PATH"
-        else
-          DIR="${INFISICAL_DIRECTORY:-$WORKDIR}"
-          DIR="${DIR#./}"
-          DIR="${DIR%/}"
-          if [ -z "$DIR" ] || [ "$DIR" = "." ]; then
-            SECRET_PATH="/"
-          else
-            SECRET_PATH="/$DIR"
-          fi
-        fi
+        SECRET_PATH="${INFISICAL_SECRET_PATH:-/}"
         echo "secret-path=$SECRET_PATH" >> "$GITHUB_OUTPUT"
 
         if [ -n "$INFISICAL_IDENTITY_ID" ]; then
           if [ -z "$INFISICAL_PROJECT_SLUG" ]; then
-            echo "::error::Infisical identity is set but project slug is missing (input infisical_project_slug or var INFISICAL_PROJECT_SLUG)."
+            echo "::error::Infisical identity is set but INFISICAL_PROJECT_SLUG is missing."
             exit 1
           fi
           echo "source=infisical" >> "$GITHUB_OUTPUT"
@@ -137,12 +81,12 @@ runs:
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
-        identity-id: ${{ inputs.infisical_identity_id }}
-        project-slug: ${{ inputs.infisical_project_slug }}
+        identity-id: ${{ env.INFISICAL_IDENTITY_ID }}
+        project-slug: ${{ env.INFISICAL_PROJECT_SLUG }}
         env-slug: ${{ steps.detect.outputs.env-slug }}
         secret-path: ${{ steps.detect.outputs.secret-path }}
-        recursive: ${{ inputs.infisical_recursive == 'true' }}
-        domain: ${{ inputs.infisical_domain }}
+        recursive: ${{ env.INFISICAL_RECURSIVE == 'true' }}
+        domain: ${{ env.INFISICAL_DOMAIN || 'https://app.infisical.com' }}
         export-type: file
         file-output-path: ${{ steps.detect.outputs.workspace-file }}
 
@@ -150,10 +94,6 @@ runs:
       if: steps.detect.outputs.source == 'dotenvx'
       working-directory: ${{ inputs.working_directory }}
       shell: bash
-      env:
-        DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ inputs.dotenv_private_key_development }}
-        DOTENV_PRIVATE_KEY_PRODUCTION: ${{ inputs.dotenv_private_key_production }}
-        DOTENV_PRIVATE_KEY: ${{ inputs.dotenv_private_key }}
       run: |
         set -eu
 

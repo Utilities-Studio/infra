@@ -289,14 +289,24 @@ All deployment workflows:
 - Post deployment status as PR comments
 - Gate production deploys behind GitHub environments
 
+`with:` is deploy config only (`environment`, `working_directory`, `skip_build`, …). Infisical and dotenvx credentials are job env, not workflow inputs.
+
+Reusable workflows copy caller repo `vars` / `secrets` into env:
+
+- `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, optional `INFISICAL_DOMAIN` (default `https://app.infisical.com`), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`
+- `DOTENV_PRIVATE_KEY`, `DOTENV_PRIVATE_KEY_DEVELOPMENT`, `DOTENV_PRIVATE_KEY_PRODUCTION`
+- `CLOUDFLARE_API_TOKEN` on Cloudflare jobs
+
 Env files are created by [`.github/actions/ensure-env-files`](.github/actions/ensure-env-files/action.yml) after `bun ci`:
 
-1. **Infisical** if `infisical_identity_id` or `vars.INFISICAL_IDENTITY_ID` is set (GitHub OIDC; caller must grant `id-token: write`). GitHub `environment` `development`/`production` → Infisical env of the same name and `.env.{environment}`. No `environment` → Infisical `production` and `.env`.
+1. **Infisical** if `INFISICAL_IDENTITY_ID` is set (GitHub OIDC; caller must grant `id-token: write`). Requires `INFISICAL_PROJECT_SLUG`. GitHub `environment` `development`/`production` → Infisical env of the same name and `.env.{environment}`. No `environment` → Infisical `production` and `.env`.
 2. **dotenvx** if `.env*.encrypted` files exist
 3. **existing** if plaintext `.env*` files are already present
 4. **none** otherwise (sync/build skip as today)
 
-Later steps are unchanged: they still read `.env`, `.env.development`, or `.env.production`. Infisical folder defaults to the job `working_directory` (`containers/directus` → `/containers/directus`, `.` → `/`). Override with `infisical_secret_path` only when the Infisical folder does not match the repo path. Caller vars: `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, optional `INFISICAL_DOMAIN`.
+Later steps still read `.env`, `.env.development`, or `.env.production`. Infisical folder defaults to `/`.
+
+Reusable workflows do not inherit caller `env:`. A one-project repo can set the Infisical GitHub vars and keep using `uses: …/cloudflare-deploy.yml@main`. For a different Infisical project on one job, call [`.github/actions/cloudflare-deploy`](.github/actions/cloudflare-deploy/action.yml) from a normal job and set `INFISICAL_*` in that job's `env`.
 
 The Cloudflare Workers and Supabase workflows also accept `post_deploy_commands` for trusted, static
 caller-owned commands that must run in the same environment job after a successful deploy. Cloudflare preview
@@ -340,6 +350,32 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
+```
+
+Set GitHub vars `INFISICAL_IDENTITY_ID` and `INFISICAL_PROJECT_SLUG` (optional `INFISICAL_DOMAIN`) to use Infisical instead of dotenvx on that reusable job.
+
+Per-job Infisical project (reusable workflows do not inherit caller `env:`):
+
+```yaml
+jobs:
+  deploy-directus:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      INFISICAL_IDENTITY_ID: 00000000-0000-0000-0000-000000000000
+      INFISICAL_PROJECT_SLUG: my-directus-project
+      INFISICAL_DOMAIN: https://infisical.example.com
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: Utilities-Studio/infra/.github/actions/cloudflare-deploy@main
+        with:
+          environment: production
+          working_directory: containers/directus
+          install_directory: .
+          skip_build: true
 ```
 
 ### Cloudflare Pages
