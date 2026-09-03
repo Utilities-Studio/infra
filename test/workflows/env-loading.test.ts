@@ -46,9 +46,8 @@ describe("deploy workflow env loading", () => {
 			expect(workflow).not.toContain("infisical_domain");
 			expect(workflow).toContain("INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}");
 			expect(workflow).toContain("INFISICAL_PROJECT_SLUG: ${{ vars.INFISICAL_PROJECT_SLUG }}");
-			expect(workflow).toContain(
-				"INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN || 'https://app.infisical.com' }}",
-			);
+			expect(workflow).toContain("INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN }}");
+			expect(workflow).not.toContain("https://app.infisical.com");
 			expect(workflow).toContain(
 				"DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}",
 			);
@@ -62,13 +61,21 @@ describe("deploy workflow env loading", () => {
 		expect(action).not.toContain("dotenv_private_key");
 		expect(action).toContain("Infisical/secrets-action@v1.0.16");
 		expect(action).toContain("method: oidc");
-		expect(action).toContain("identity-id: ${{ env.INFISICAL_IDENTITY_ID }}");
-		expect(action).toContain("project-slug: ${{ env.INFISICAL_PROJECT_SLUG }}");
+		expect(action).toContain("identity-id: ${{ steps.detect.outputs.identity-id }}");
+		expect(action).toContain("project-slug: ${{ steps.detect.outputs.project-slug }}");
+		expect(action).toContain("domain: ${{ steps.detect.outputs.domain }}");
+		expect(action).toContain("oidc-audience: ${{ github.server_url }}/${{ github.repository }}");
+		expect(action).toContain("INFISICAL_DOMAIN is required");
+		expect(action).not.toContain("https://app.infisical.com");
 		expect(action).toContain("export-type: file");
 		expect(action).toContain("bunx --bun @dotenvx/dotenvx decrypt");
 		expect(action).toContain('SECRET_PATH="${INFISICAL_SECRET_PATH:-/}"');
 		expect(action).toContain('SLUG="${INFISICAL_ENV_SLUG:-${ENVIRONMENT:-production}}"');
 		expect(action).toContain('FILE=".env"');
+		expect(action).toContain(
+			'[ -n "$INFISICAL_IDENTITY_ID" ] && [ -n "$INFISICAL_PROJECT_SLUG" ]',
+		);
+		expect(action).not.toContain("INFISICAL_PROJECT_SLUG is missing");
 		expect(action.indexOf("source=infisical")).toBeLessThan(action.indexOf("source=dotenvx"));
 	});
 

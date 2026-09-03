@@ -293,13 +293,13 @@ All deployment workflows:
 
 Reusable workflows copy caller repo `vars` / `secrets` into env:
 
-- `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, optional `INFISICAL_DOMAIN` (default `https://app.infisical.com`), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`
+- `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_DOMAIN` (required for Infisical; no Cloud default), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`
 - `DOTENV_PRIVATE_KEY`, `DOTENV_PRIVATE_KEY_DEVELOPMENT`, `DOTENV_PRIVATE_KEY_PRODUCTION`
 - `CLOUDFLARE_API_TOKEN` on Cloudflare jobs
 
 Env files are created by [`.github/actions/ensure-env-files`](.github/actions/ensure-env-files/action.yml) after `bun ci`:
 
-1. **Infisical** if `INFISICAL_IDENTITY_ID` is set (GitHub OIDC; caller must grant `id-token: write`). Requires `INFISICAL_PROJECT_SLUG`. GitHub `environment` `development`/`production` → Infisical env of the same name and `.env.{environment}`. No `environment` → Infisical `production` and `.env`.
+1. **Infisical** if both `INFISICAL_IDENTITY_ID` and `INFISICAL_PROJECT_SLUG` are set (GitHub OIDC; caller must grant `id-token: write`). Identity alone does not enable Infisical. GitHub `environment` `development`/`production` → Infisical env of the same name and `.env.{environment}`. No `environment` → Infisical `production` and `.env`.
 2. **dotenvx** if `.env*.encrypted` files exist
 3. **existing** if plaintext `.env*` files are already present
 4. **none** otherwise (sync/build skip as today)
@@ -365,7 +365,7 @@ jobs:
       pull-requests: write
       id-token: write
     env:
-      INFISICAL_IDENTITY_ID: 00000000-0000-0000-0000-000000000000
+      INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
       INFISICAL_PROJECT_SLUG: my-directus-project
       INFISICAL_DOMAIN: https://infisical.example.com
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

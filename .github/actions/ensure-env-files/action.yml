@@ -51,13 +51,16 @@ runs:
         SECRET_PATH="${INFISICAL_SECRET_PATH:-/}"
         echo "secret-path=$SECRET_PATH" >> "$GITHUB_OUTPUT"
 
-        if [ -n "$INFISICAL_IDENTITY_ID" ]; then
-          if [ -z "$INFISICAL_PROJECT_SLUG" ]; then
-            echo "::error::Infisical identity is set but INFISICAL_PROJECT_SLUG is missing."
+        if [ -n "$INFISICAL_IDENTITY_ID" ] && [ -n "$INFISICAL_PROJECT_SLUG" ]; then
+          if [ -z "${INFISICAL_DOMAIN:-}" ]; then
+            echo "::error::INFISICAL_DOMAIN is required for Infisical (do not default to Infisical Cloud)."
             exit 1
           fi
+          echo "identity-id=$INFISICAL_IDENTITY_ID" >> "$GITHUB_OUTPUT"
+          echo "project-slug=$INFISICAL_PROJECT_SLUG" >> "$GITHUB_OUTPUT"
+          echo "domain=$INFISICAL_DOMAIN" >> "$GITHUB_OUTPUT"
           echo "source=infisical" >> "$GITHUB_OUTPUT"
-          echo "Env source: infisical env=$SLUG file=$FILE path=$SECRET_PATH"
+          echo "Env source: infisical env=$SLUG file=$FILE path=$SECRET_PATH domain=$INFISICAL_DOMAIN"
           exit 0
         fi
 
@@ -81,12 +84,13 @@ runs:
       uses: Infisical/secrets-action@v1.0.16
       with:
         method: oidc
-        identity-id: ${{ env.INFISICAL_IDENTITY_ID }}
-        project-slug: ${{ env.INFISICAL_PROJECT_SLUG }}
+        identity-id: ${{ steps.detect.outputs.identity-id }}
+        project-slug: ${{ steps.detect.outputs.project-slug }}
         env-slug: ${{ steps.detect.outputs.env-slug }}
         secret-path: ${{ steps.detect.outputs.secret-path }}
         recursive: ${{ env.INFISICAL_RECURSIVE == 'true' }}
-        domain: ${{ env.INFISICAL_DOMAIN || 'https://app.infisical.com' }}
+        domain: ${{ steps.detect.outputs.domain }}
+        oidc-audience: ${{ github.server_url }}/${{ github.repository }}
         export-type: file
         file-output-path: ${{ steps.detect.outputs.workspace-file }}
 
