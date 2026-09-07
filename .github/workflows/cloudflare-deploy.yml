@@ -51,6 +51,18 @@ on:
         required: false
       DOTENV_PRIVATE_KEY:
         required: false
+      INFISICAL_IDENTITY_ID:
+        required: false
+      INFISICAL_PROJECT_SLUG:
+        required: false
+      INFISICAL_DOMAIN:
+        required: false
+      INFISICAL_ENV_SLUG:
+        required: false
+      INFISICAL_SECRET_PATH:
+        required: false
+      INFISICAL_RECURSIVE:
+        required: false
 
 permissions:
   contents: read
@@ -73,12 +85,12 @@ jobs:
     environment: ${{ github.event.pull_request.number == '' && (inputs.environment || 'production') || '' }}
 
     env:
-      INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
-      INFISICAL_PROJECT_SLUG: ${{ vars.INFISICAL_PROJECT_SLUG }}
-      INFISICAL_ENV_SLUG: ${{ vars.INFISICAL_ENV_SLUG }}
-      INFISICAL_SECRET_PATH: ${{ vars.INFISICAL_SECRET_PATH }}
-      INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN }}
-      INFISICAL_RECURSIVE: ${{ vars.INFISICAL_RECURSIVE }}
+      INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID || vars.INFISICAL_IDENTITY_ID }}
+      INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG || vars.INFISICAL_PROJECT_SLUG }}
+      INFISICAL_ENV_SLUG: ${{ secrets.INFISICAL_ENV_SLUG || vars.INFISICAL_ENV_SLUG }}
+      INFISICAL_SECRET_PATH: ${{ secrets.INFISICAL_SECRET_PATH || vars.INFISICAL_SECRET_PATH }}
+      INFISICAL_DOMAIN: ${{ secrets.INFISICAL_DOMAIN || vars.INFISICAL_DOMAIN }}
+      INFISICAL_RECURSIVE: ${{ secrets.INFISICAL_RECURSIVE || vars.INFISICAL_RECURSIVE }}
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
       DOTENV_PRIVATE_KEY_PRODUCTION: ${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}
       DOTENV_PRIVATE_KEY: ${{ secrets.DOTENV_PRIVATE_KEY }}
