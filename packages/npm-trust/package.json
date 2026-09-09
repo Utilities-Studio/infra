@@ -1,0 +1,39 @@
+{
+	"name": "@utilities-studio/npm-trust",
+	"version": "1.0.0",
+	"description": "Configure npm trusted publishing for every publishable package in a repository",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Utilities-Studio/infra",
+		"directory": "packages/npm-trust"
+	},
+	"bin": {
+		"npm-trust": "src/index.ts"
+	},
+	"files": [
+		"src/index.ts",
+		"src/npm-client.ts",
+		"src/trust.ts"
+	],
+	"scripts": {
+		"check": "bun run typecheck && bun run test",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@manypkg/get-packages": "3.1.0",
+		"cac": "7.0.0",
+		"compare-versions": "6.1.1",
+		"picocolors": "1.1.1",
+		"zod": "4.5.4"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.2",
+		"typescript": "7.0.2"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

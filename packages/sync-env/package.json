@@ -29,16 +29,16 @@
 		"build": "tsup src/secret-keys.ts --format esm,cjs --dts --out-dir dist --clean"
 	},
 	"dependencies": {
-		"@clack/prompts": "^1.7.0",
+		"@clack/prompts": "^1.8.0",
 		"cac": "^7.0.0",
 		"dotenv": "^17.4.2",
 		"jsonc-parser": "^3.3.1",
 		"picocolors": "^1.1.1"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.3.14",
-		"oxlint-tsgolint": "^0.24.0",
+		"@types/bun": "^1.4.2",
+		"oxlint-tsgolint": "^7.0.2001",
 		"tsup": "^8.5.1",
-		"typescript": "^6.0.3"
+		"typescript": "^7.0.2"
 	}
 }

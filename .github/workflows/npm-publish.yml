@@ -1,0 +1,135 @@
+name: Shared · Release npm Packages
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: "Directory containing the release package.json"
+        required: false
+        type: string
+        default: "."
+      bun_version:
+        description: "Bun version used by the caller repository"
+        required: false
+        type: string
+        default: "1.4.2"
+      install_command:
+        description: "Trusted static caller-owned dependency installation command"
+        required: false
+        type: string
+        default: "bun install --frozen-lockfile --ignore-scripts"
+      verify_command:
+        description: "Trusted static caller-owned quality gate command"
+        required: false
+        type: string
+        default: "bun run check"
+      version_command:
+        description: "Changesets version command, including lockfile updates"
+        required: false
+        type: string
+        default: "bun run release:version"
+      publish_command:
+        description: "Changesets publish command"
+        required: false
+        type: string
+        default: "bun run release:publish"
+
+# The caller grants contents: write, pull-requests: write, and id-token: write.
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: infra-npm-publish-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate-ref:
+    name: Validate release ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Require the caller's default branch
+        env:
+          CURRENT_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_REF="refs/heads/$DEFAULT_BRANCH"
+          if [[ "$CURRENT_REF" != "$EXPECTED_REF" ]]; then
+            echo "npm publishing requires $EXPECTED_REF; received $CURRENT_REF"
+            exit 1
+          fi
+
+  publish:
+    name: Version or publish npm packages
+    needs: validate-ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm-publish
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.15.0"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup npm
+        run: npm install --global npm@12.0.2 --ignore-scripts
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ inputs.bun_version }}
+
+      - name: Validate caller commands
+        env:
+          INSTALL_COMMAND: ${{ inputs.install_command }}
+          VERIFY_COMMAND: ${{ inputs.verify_command }}
+          VERSION_COMMAND: ${{ inputs.version_command }}
+          PUBLISH_COMMAND: ${{ inputs.publish_command }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${INSTALL_COMMAND//[[:space:]]/}" ]] || { echo "install_command cannot be empty"; exit 1; }
+          [[ -n "${VERIFY_COMMAND//[[:space:]]/}" ]] || { echo "verify_command cannot be empty"; exit 1; }
+          [[ -n "${VERSION_COMMAND//[[:space:]]/}" ]] || { echo "version_command cannot be empty"; exit 1; }
+          [[ -n "${PUBLISH_COMMAND//[[:space:]]/}" ]] || { echo "publish_command cannot be empty"; exit 1; }
+
+      - name: Install dependencies
+        env:
+          INSTALL_COMMAND: ${{ inputs.install_command }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash --noprofile --norc -e -u -o pipefail -c "$INSTALL_COMMAND"
+
+      - name: Verify release
+        env:
+          VERIFY_COMMAND: ${{ inputs.verify_command }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash --noprofile --norc -e -u -o pipefail -c "$VERIFY_COMMAND"
+
+      - name: Create release PR or publish packages
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          cwd: ${{ inputs.working_directory }}
+          version-script: ${{ inputs.version_command }}
+          publish-script: ${{ inputs.publish_command }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"

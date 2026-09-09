@@ -62,10 +62,14 @@ describe('sync-env package contract', () => {
 	})
 
 	test('release workflow runs package builds before npm publish', async () => {
-		const workflow = await Bun.file(join(repoDir, '.github/workflows/release-package.yml')).text()
-		const buildIndex = workflow.indexOf('bun run build')
-		const publishIndex = workflow.indexOf('npm publish --access public')
+		const workflow = await Bun.file(join(repoDir, '.github/workflows/npm-publish.yml')).text()
+		const root = await Bun.file(join(repoDir, 'package.json')).json()
+		const buildIndex = workflow.indexOf('- name: Verify release')
+		const publishIndex = workflow.indexOf('- name: Create release PR or publish packages')
 
+		expect(root.scripts.check).toContain('run build')
+		expect(root.scripts.build).toContain('--workspaces --if-present build')
+		expect(workflow).toContain('default: "bun run check"')
 		expect(buildIndex).toBeGreaterThan(0)
 		expect(publishIndex).toBeGreaterThan(buildIndex)
 	})
@@ -73,7 +77,7 @@ describe('sync-env package contract', () => {
 
 describe('built secret-keys Node export', () => {
 	beforeAll(async () => {
-		const result = await run(['bun', 'run', 'build'])
+		const result = await run(['bun', '--no-env-file', 'run', 'build'])
 		if (result.exitCode !== 0) {
 			throw new Error(result.stderr || result.stdout || 'bun run build failed')
 		}

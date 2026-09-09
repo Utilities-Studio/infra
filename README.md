@@ -7,7 +7,7 @@
     The infrastructure layer behind every <a href="https://github.com/Utilities-Studio">Utilities Studio</a> project.
   </p>
   <p align="center">
-    <code>6 packages</code> &middot; <code>8 workflows</code> &middot; <code>3 platforms</code> &middot; <code>zero config</code>
+    <code>7 packages</code> &middot; <code>7 workflows</code> &middot; <code>3 platforms</code>
   </p>
 </p>
 
@@ -27,13 +27,11 @@
 ```
 +--------------------------------------------------------------------------+
 |                                                                          |
-|   One monorepo. Six npm packages. Eight reusable workflows.              |
+|   Seven npm packages. Seven GitHub Actions workflows.                   |
 |                                                                          |
 |   Sync env vars. Deploy Workers. Deploy Pages. Deploy Supabase.          |
-|   Push Stripe config. Pull to Supabase. Auto-publish on change.          |
-|   AI-powered code review on every PR.                                    |
-|                                                                          |
-|   Call a workflow. Pass your secrets. Ship.                               |
+|   Push Stripe config. Pull to Supabase. Changesets releases.             |
+|   Configure trusted publishing once. Publish through OIDC.               |
 |                                                                          |
 +--------------------------------------------------------------------------+
 ```
@@ -42,16 +40,17 @@
 
 ## Packages
 
-All published to npm under `@utilities-studio/`. Install nothing -- use `bunx` directly.
+Package sources live under `@utilities-studio/`. Published versions can be run directly with `bunx`.
 
-| Package | Version | What it does |
+| Package | Source version | What it does |
 |---|---|---|
-| [`sync-env`](packages/sync-env/) | 1.1.5 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
+| [`sync-env`](packages/sync-env/) | 1.1.6 | Sync `.env.*` files to Cloudflare Workers and Supabase Edge Functions |
 | [`env-encrypt`](packages/env-encrypt/) | 1.0.6 | Encrypt changed dotenvx env files only when plaintext values drift |
-| [`github-env`](packages/github-env/) | 1.0.0 | Load dotenv files into GitHub Actions env and explicit step outputs |
+| [`github-env`](packages/github-env/) | 1.0.1 | Load dotenv files into GitHub Actions env and explicit step outputs |
 | [`stripe-sync`](packages/stripe-sync/) | 1.0.4 | Push products/prices to Stripe, pull to Supabase, manage webhooks |
-| [`vite-env`](packages/vite-env/) | 1.0.2 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
+| [`vite-env`](packages/vite-env/) | 1.0.3 | Generate typed `vite-env.d.ts` from `VITE_*` environment variables |
 | [`env-local`](packages/env-local/) | 1.0.3 | Generate matching local env overrides from a running local Supabase instance |
+| [`npm-trust`](packages/npm-trust/) | 1.0.0 | Discover publishable packages and configure npm trusted publishing safely |
 
 ---
 
@@ -260,9 +259,36 @@ Requires a running local Supabase instance (`bunx supabase start`).
 
 ---
 
+## npm-trust
+
+Configure npm trusted publishing for every non-private publishable package in a normal repository or declared monorepo.
+
+```bash
+# Authenticated read-only preflight and plan
+bunx @utilities-studio/npm-trust github \
+  --repo utilities-studio/lena \
+  --file publish.yml \
+  --env npm-publish \
+  --allow-publish
+
+# Create only missing exact configurations
+bunx @utilities-studio/npm-trust github \
+  --repo utilities-studio/lena \
+  --file publish.yml \
+  --env npm-publish \
+  --allow-publish \
+  --apply
+```
+
+The CLI validates the complete batch before writing, skips exact existing records, stops on conflicts, and never revokes trust automatically. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
+
+See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the bootstrap boundary and full contract.
+
+---
+
 ## Workflows
 
-All workflows are reusable (`workflow_call`). Call them from any repo.
+Shared workflows use `workflow_call`. Infra's `release-package.yml` calls `npm-publish.yml` for installation, verification, Changesets version PRs, and OIDC publishing across all seven packages.
 
 ```
   your-repo/.github/workflows/deploy.yml
@@ -324,9 +350,8 @@ into this input.
 
 | Workflow | What it does |
 |---|---|
-| [`release-package`](.github/workflows/release-package.yml) | Auto-detects changed packages, bumps patch version, publishes to npm, creates git tags |
-| [`claude`](.github/workflows/claude.yml) | Claude Code agent -- responds to `@claude` mentions on issues and PRs |
-| [`claude-code-review`](.github/workflows/claude-code-review.yml) | Automated PR code review -- updates titles, posts inline suggestions |
+| [`npm-publish`](.github/workflows/npm-publish.yml) | Reusable Changesets version PRs, changelogs, tags, and npm publishing through GitHub OIDC |
+| [`release-package`](.github/workflows/release-package.yml) | Calls npm-publish for every public workspace package, including npm-trust |
 
 ---
 
@@ -412,19 +437,80 @@ jobs:
 
 Set `skip_project_config_push: true` when a project should deploy migrations or functions without running `supabase config push --yes`.
 
-### Claude Code Review
+### npm Publishing
 
 ```yaml
+# .github/workflows/publish.yml
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
 
 jobs:
-  review:
-    uses: Utilities-Studio/infra/.github/workflows/claude-code-review.yml@main
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  publish:
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    uses: Utilities-Studio/infra/.github/workflows/npm-publish.yml@<full-commit-sha>
 ```
+
+Pin the reusable workflow to a full commit SHA. This works for a single-package repository or a declared monorepo using Changesets CLI v3. The default branch must match the caller's trigger. The called job uses the caller repository's `npm-publish` environment. Create and protect that environment, restrict it to the default branch, and enable **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** before the first release.
+
+npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. The workflow needs no npm token. GitHub's automatic token creates the version PR and release tags.
+
+The caller provides these root scripts:
+
+| Script | Responsibility |
+|---|---|
+| `check` | Typecheck, build publishable artifacts, and run tests |
+| `release:version` | `changeset version`, then update the package manager's lockfile |
+| `release:publish` | `changeset publish` |
+
+Optional workflow inputs are `working_directory`, `bun_version`, `install_command`, `verify_command`, `version_command`, and `publish_command`. Defaults use Bun and the scripts above. Override installation and lockfile handling for npm, pnpm, or Yarn callers. Keep command inputs static and repository-owned. Publish commands must invoke Changesets CLI v3 and preserve its `CHANGESETS_OUTPUT` environment variable so the action can create release tags and GitHub releases.
+
+GitHub's automatic token does not trigger ordinary PR workflows when it opens the version PR. Run required checks manually on that PR if branch protection requires them. Environment reviewers also approve version-PR runs because versioning and publishing share the protected job.
+
+### Releasing Infra packages
+
+Infra is one Bun workspace with one root `bun.lock`. Install and verify from the root:
+
+```bash
+bun install --frozen-lockfile --ignore-scripts
+bun run check
+```
+
+For each releasable change:
+
+```bash
+bun run changeset
+```
+
+Select the affected packages and bump levels. Commit the generated changeset with the change. After it reaches `main`, Changesets opens or updates **Version Packages**. Review and merge that PR; the next run publishes unpublished versions and creates package tags and GitHub releases. `workflow_dispatch` retries the same process without inventing another version bump.
+
+Changesets owns package discovery, semantic versions, changelogs, and internal dependency updates. Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows, automatic patch comparisons, or per-package lockfiles.
+
+Before enabling this flow:
+
+1. Align source versions with any versions previously published by the old workflow, which bumped versions without committing them. Do not guess or reset versions.
+2. Manually publish the first version of any package that does not yet exist on npm. [npm-trust's bootstrap instructions](packages/npm-trust/README.md#bootstrap-this-package) cover the new package.
+3. Configure every package to trust the common caller. Existing trust records pointing at another workflow or environment must be reconciled manually; npm-trust refuses to overwrite conflicts.
+
+From the Infra root, preview the authenticated trust plan, then repeat with `--apply` after reviewing it:
+
+```bash
+bun --no-env-file packages/npm-trust/src/index.ts github \
+  --repo Utilities-Studio/infra \
+  --file release-package.yml \
+  --env npm-publish \
+  --allow-publish
+```
+
+Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See [Changesets automation](https://changesets.dev/guide/automating) for the upstream release model.
+
+Migration verification, 2026-09-09: after the dependency updates, frozen installation and 31 focused release, trust, and pure helper tests pass. The root typecheck remains blocked at `packages/stripe-sync/src/index.ts:110`: the prompt result still includes `symbol` after cancellation handling. The release gate must pass before publishing. The earlier build/export checks used sync-env's locally installed TypeScript 6.0.3, not its newly declared 7.0.2; a fresh-install build is still required. Environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run.
 
 ---
 
@@ -447,9 +533,8 @@ jobs:
        |         |
        |         +--- sync-env ----> Edge function secrets synced
        |
-       +--- claude-code-review ----> AI reviews the PR
-       |
-       +--- release-package -------> Changed packages published to npm
+       +--- release-package -------> npm-publish reusable workflow
+                                     Changeset -> version PR -> merge -> OIDC publish
        |
        v
   PR comment with deploy preview URL
@@ -461,6 +546,10 @@ jobs:
 
 ```
 infra/
+├── package.json              Private Bun workspace and release scripts
+├── bun.lock                  Shared dependency lockfile
+├── tsconfig.json             Workspace-wide typecheck
+├── .changeset/               Changesets config and pending release notes
 ├── packages/
 │   ├── sync-env/              Sync env vars to Cloudflare + Supabase
 │   │   ├── src/index.ts
@@ -482,8 +571,11 @@ infra/
 │   ├── vite-env/              Generate typed VITE_* declarations
 │   │   ├── src/index.ts
 │   │   └── package.json
-│   └── env-local/             Local Supabase -> matching local env overlay
-│       ├── src/index.ts
+│   ├── env-local/             Local Supabase -> matching local env overlay
+│   │   ├── src/index.ts
+│   │   └── package.json
+│   └── npm-trust/             Configure npm trusted publishing in bulk
+│       ├── src/
 │       └── package.json
 ├── .github/workflows/
 │   ├── cloudflare-deploy.yml         Workers deploy + PR previews
@@ -491,9 +583,8 @@ infra/
 │   ├── cloudflare-pages-cleanup.yml  Clean up Pages previews on PR close
 │   ├── cloudflare-workers-cleanup.yml Update Workers preview status
 │   ├── supabase-deploy.yml           Migrations + edge functions
-│   ├── release-package.yml           Auto-publish changed packages
-│   ├── claude.yml                    Claude Code agent integration
-│   └── claude-code-review.yml        AI-powered PR review
+│   ├── release-package.yml           Release every public workspace package
+│   └── npm-publish.yml               Reusable Changesets and OIDC workflow
 └── docs/
     └── superpowers/                  Design specs and implementation plans
 ```
@@ -503,6 +594,9 @@ infra/
 ## Requirements
 
 - [Bun](https://bun.sh) runtime (all packages use `#!/usr/bin/env bun`)
+- npm >=11.15.0 and <13.0.0, npm write access, and account-level 2FA (for npm-trust setup)
+- A protected caller-repository `npm-publish` environment (for reusable OIDC publishing)
+- GitHub Actions permission to create PRs, Changesets CLI v3, and registered npm trusted publishers (for releases)
 - Cloudflare account + API token (for deploy workflows)
 - Supabase project (for Supabase workflows and stripe-sync pull)
 - Stripe secret key (for stripe-sync)
