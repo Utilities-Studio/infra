@@ -51,7 +51,7 @@ describe('sync-env package contract', () => {
 	test('has a package build script for generated Node artifacts', async () => {
 		const pkg = await readPackageJson()
 
-		expect(pkg.scripts?.build).toBe('tsup src/secret-keys.ts --format esm,cjs --dts --out-dir dist --clean')
+		expect(pkg.scripts?.build).toBe('tsdown src/secret-keys.ts --format esm --format cjs --dts --out-dir dist --clean --no-fixed-extension')
 		expect(await Bun.file(join(packageDir, 'scripts/build-secret-keys.ts')).exists()).toBe(false)
 	})
 
@@ -80,6 +80,14 @@ describe('built secret-keys Node export', () => {
 		const result = await run(['bun', '--no-env-file', 'run', 'build'])
 		if (result.exitCode !== 0) {
 			throw new Error(result.stderr || result.stdout || 'bun run build failed')
+		}
+	})
+
+	test('generates declaration files for both module formats', async () => {
+		for (const extension of ['d.ts', 'd.cts']) {
+			const declarations = Bun.file(join(packageDir, `dist/secret-keys.${extension}`))
+			expect(await declarations.exists()).toBe(true)
+			expect(await declarations.text()).toContain('declare function isSecretKey(key: string): boolean;')
 		}
 	})
 

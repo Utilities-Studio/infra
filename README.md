@@ -510,9 +510,9 @@ bun --no-env-file packages/npm-trust/src/index.ts github \
 
 Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See [Changesets automation](https://changesets.dev/guide/automating) for the upstream release model.
 
-Run `bun --no-env-file run lint` from the root for type-aware Oxlint across all packages, tests, and GitHub scripts. The command enables `--type-check` to report compiler diagnostics alongside lint rules. `bun --no-env-file run check` runs lint, package builds, and tests in order. TypeScript remains a build dependency of sync-env for declaration generation through tsup.
+Run `bun --no-env-file run lint` from the root for type-aware Oxlint across all packages, tests, and GitHub scripts. The command enables `--type-check` to report compiler diagnostics alongside lint rules. `bun --no-env-file run check` runs lint, package builds, and tests in order. sync-env uses tsdown to build its ESM and CommonJS exports and generate declarations with TypeScript 7.
 
-Migration verification, 2026-09-09: the earlier dependency update passed frozen installation and 31 focused release, trust, and pure helper tests. After the Oxlint replacement, root and npm-trust lint checks pass with existing-test `await-thenable` warnings, and 28 focused release, trust, and pure helper tests pass. The release gate must pass before publishing. The earlier build/export checks used sync-env's locally installed TypeScript 6.0.3, not its newly declared 7.0.2; a fresh-install build is still required. The full check gate, environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run for the Oxlint replacement.
+Migration verification, 2026-09-09: a fresh frozen-lockfile installation, root type-aware lint, and 15 focused release, package-export, and pure helper tests pass with tsdown 0.23.0 and TypeScript 7.0.2. The package tests rebuild and verify ESM, CommonJS, and both declaration files in the clean installation. Lint reports existing-test `await-thenable` warnings; tsdown marks its TypeScript 7 declaration generator as experimental. The full check gate, environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run. The release gate must pass before publishing.
 
 ---
 
