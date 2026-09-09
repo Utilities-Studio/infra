@@ -38,15 +38,15 @@ describe("deploy workflow env loading", () => {
 	}
 
 	for (const workflowPath of workflowPaths) {
-		test(`${workflowPath} maps Infisical and dotenvx from vars/secrets into env`, async () => {
+		test(`${workflowPath} maps Infisical secrets with vars fallback and dotenvx secrets into env`, async () => {
 			const workflow = await readWorkflow(workflowPath);
 
 			expect(workflow).not.toContain("infisical_identity_id");
 			expect(workflow).not.toContain("infisical_project_slug");
 			expect(workflow).not.toContain("infisical_domain");
-			expect(workflow).toContain("INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}");
-			expect(workflow).toContain("INFISICAL_PROJECT_SLUG: ${{ vars.INFISICAL_PROJECT_SLUG }}");
-			expect(workflow).toContain("INFISICAL_DOMAIN: ${{ vars.INFISICAL_DOMAIN }}");
+			expect(workflow).toContain("INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID || vars.INFISICAL_IDENTITY_ID }}");
+			expect(workflow).toContain("INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG || vars.INFISICAL_PROJECT_SLUG }}");
+			expect(workflow).toContain("INFISICAL_DOMAIN: ${{ secrets.INFISICAL_DOMAIN || vars.INFISICAL_DOMAIN }}");
 			expect(workflow).not.toContain("https://app.infisical.com");
 			expect(workflow).toContain(
 				"DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}",
