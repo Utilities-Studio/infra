@@ -271,7 +271,7 @@ bunx @utilities-studio/npm-trust github \
   --env npm-publish \
   --allow-publish
 
-# Create only missing exact configurations
+# Create missing configurations and replace differing records
 bunx @utilities-studio/npm-trust github \
   --repo utilities-studio/lena \
   --file publish.yml \
@@ -280,7 +280,7 @@ bunx @utilities-studio/npm-trust github \
   --apply
 ```
 
-The CLI validates the complete batch before writing, skips exact existing records, stops on conflicts, and never revokes trust automatically. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
+The CLI validates the complete batch before writing and skips matching existing records. npm-added staged-publish access is accepted for `--allow-publish`; stage-only requests still reject direct-publish access. With `--apply`, it creates missing configurations and replaces differing records by revoking their IDs and creating the requested configuration. If replacement creation fails, rerun the same command to restore the missing configuration. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
 
 See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the bootstrap boundary and full contract.
 
@@ -496,7 +496,7 @@ Before enabling this flow:
 
 1. Align source versions with any versions previously published by the old workflow, which bumped versions without committing them. Do not guess or reset versions.
 2. Manually publish the first version of any package that does not yet exist on npm. [npm-trust's bootstrap instructions](packages/npm-trust/README.md#bootstrap-this-package) cover the new package.
-3. Configure every package to trust the common caller. Existing trust records pointing at another workflow or environment must be reconciled manually; npm-trust refuses to overwrite conflicts.
+3. Configure every package to trust the common caller. Run npm-trust with `--apply` to replace existing records that have a different repository, workflow, environment, or permissions.
 
 From the Infra root, preview the authenticated trust plan, then repeat with `--apply` after reviewing it:
 

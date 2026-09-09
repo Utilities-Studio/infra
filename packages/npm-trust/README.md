@@ -16,7 +16,7 @@ bunx @utilities-studio/npm-trust github \
   --allow-publish
 ```
 
-Apply only the missing configurations:
+Create missing configurations and replace differing configurations:
 
 ```bash
 bunx @utilities-studio/npm-trust github \
@@ -29,16 +29,18 @@ bunx @utilities-studio/npm-trust github \
 
 Add `--yes` to skip the wrapper's final confirmation. Native npm authentication and 2FA remain interactive.
 
-For staged publishing, use `--allow-stage-publish`. Pass both permission flags only when the workflow needs both capabilities.
+For staged publishing without direct publishing, use only `--allow-stage-publish`. npm automatically allows staged publishing on new trust records, including those created with `--allow-publish`. The CLI accepts this npm-added permission without replacing a matching publisher. See [npm's allowed-actions contract](https://docs.npmjs.com/trusted-publishers/#for-github-actions).
 
 ## Guarantees
 
 The command completes in two phases:
 
 1. It validates the repository, workflow, package metadata, registry, npm version, authentication, write access, and every existing trust record.
-2. With `--apply`, it creates missing records sequentially with npm's recommended two-second request spacing.
+2. With `--apply`, it creates missing records and replaces differing records sequentially with npm's recommended two-second request spacing.
 
-No trust record is created unless every package passes preflight. Exact existing records are skipped. Conflicting records stop the entire plan and must be reconciled manually with `npm trust revoke`. The CLI never revokes or replaces trust automatically.
+No trust record is changed unless every package passes preflight. Existing records with the requested repository, workflow, environment, and permissions are skipped, including npm-added staging access for a direct-publish request. Stage-only requests never accept direct-publish access. Differing records appear as `replace` in the plan. With `--apply`, the CLI revokes those records by ID and creates the requested configuration. Replacement records without IDs stop preflight before any writes.
+
+Replacement is not atomic: if creation fails after revocation, the package can temporarily have no trusted publisher. The CLI stops, reports completed and pending packages, and lets you rerun the same command to create the missing configuration. Completed packages are skipped.
 
 Commands are executed with argument arrays through `Bun.spawn`, not shell strings. This gives the original loop fail-fast behavior without shell interpolation. Partial success is safe to rerun because completed packages are discovered and skipped.
 
@@ -91,4 +93,4 @@ npm trust github @utilities-studio/npm-trust \
   --yes
 ```
 
-Later versions use the same Changesets flow as every other Infra package: run `bun run changeset` from the root, land the change, and merge the generated version PR. `release-package.yml` calls the shared workflow to publish without an npm token. There is no separate npm-trust publisher. Existing trust records for the retired workflow must be reconciled manually before enabling releases.
+Later versions use the same Changesets flow as every other Infra package: run `bun run changeset` from the root, land the change, and merge the generated version PR. `release-package.yml` calls the shared workflow to publish without an npm token. There is no separate npm-trust publisher. Run the workspace setup command with `--apply` to replace trust records for retired workflows.

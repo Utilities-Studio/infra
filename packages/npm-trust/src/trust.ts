@@ -97,6 +97,10 @@ const githubTrustConfigurationSchema = z.strictObject({
 	type: z.literal('github'),
 })
 
+const githubTrustCreationOptionsSchema = githubTrustConfigurationSchema
+	.omit({ id: true, type: true })
+	.extend({ package: z.string().min(1) })
+
 const trustConfigurationTypeSchema = z.object({
 	id: z.string().min(1).optional(),
 	type: z.string().min(1),
@@ -122,8 +126,8 @@ export type PackageTrustPlan =
 			package: PublishablePackage
 	  }
 	| {
-			action: 'conflict'
-			configurations: TrustConfiguration[]
+			action: 'replace'
+			configurations: (TrustConfiguration & { id: string })[]
 			package: PublishablePackage
 	  }
 
@@ -322,10 +326,8 @@ function parseJsonDocuments(input: string): unknown[] {
 	return values.flatMap((value) => (Array.isArray(value) ? value : [value]))
 }
 
-export function parseTrustList(input: string): TrustConfiguration[] {
-	if (!input.trim()) return []
-
-	return parseJsonDocuments(input).map((value, index) => {
+function parseTrustConfigurations(values: unknown[]): TrustConfiguration[] {
+	return values.map((value, index) => {
 		const type = trustConfigurationTypeSchema.safeParse(value)
 		if (!type.success) {
 			throw new Error(`Invalid npm trust record ${index + 1}: ${zodIssueSummary(type.error)}`)
@@ -350,17 +352,38 @@ export function parseTrustList(input: string): TrustConfiguration[] {
 	})
 }
 
-export function isExactTrustConfiguration(
+export function parseTrustList(input: string): TrustConfiguration[] {
+	return parseTrustConfigurations(parseJsonDocuments(input))
+}
+
+export function parseCreatedTrust(input: string): TrustConfiguration[] {
+	const values = parseJsonDocuments(input)
+	// npm prints requested options without a type before the created records.
+	// Only creation output can contain this preview; list records stay strict.
+	const hasOptionsPreview = githubTrustCreationOptionsSchema.safeParse(values[0]).success
+	return parseTrustConfigurations(hasOptionsPreview ? values.slice(1) : values)
+}
+
+export function matchesTrustTarget(
 	configuration: TrustConfiguration,
 	target: TrustTarget,
 ): configuration is GithubTrustConfiguration {
 	if (configuration.type !== 'github') return false
 
+	// npm automatically grants staged publishing to new trusted publishers.
+	// Accept that addition for direct publishing, but never grant direct
+	// publishing to a stage-only target or ignore a requested permission.
+	const permissionsMatch = target.permissions.every((permission) => configuration.permissions.includes(permission)) &&
+		configuration.permissions.every((permission) =>
+			target.permissions.includes(permission) ||
+			(permission === 'createStagedPackage' && target.permissions.includes('createPackage')),
+		)
+
 	return (
 		configuration.repository === target.repository &&
 		configuration.file === target.file &&
 		configuration.environment === target.environment &&
-		[...configuration.permissions].sort().join('\0') === [...target.permissions].sort().join('\0')
+		permissionsMatch
 	)
 }
 
@@ -369,11 +392,11 @@ export function planPackageTrust(
 	configurations: TrustConfiguration[],
 	target: TrustTarget,
 ): PackageTrustPlan {
-	const exactIndex = configurations.findIndex((configuration) =>
-		isExactTrustConfiguration(configuration, target),
+	const matchingIndex = configurations.findIndex((configuration) =>
+		matchesTrustTarget(configuration, target),
 	)
 
-	if (exactIndex >= 0 && configurations.length === 1) {
+	if (matchingIndex >= 0 && configurations.length === 1) {
 		return { action: 'unchanged', package: package_ }
 	}
 
@@ -381,7 +404,12 @@ export function planPackageTrust(
 		return { action: 'create', package: package_ }
 	}
 
-	return { action: 'conflict', configurations, package: package_ }
+	const replacements = configurations.map((configuration) => {
+		const id = configuration.id
+		if (!id) throw new Error(`${package_.name}: cannot replace a trust record without an ID.`)
+		return { ...configuration, id }
+	})
+	return { action: 'replace', configurations: replacements, package: package_ }
 }
 
 export function listTrustArguments(packageName: string): string[] {
@@ -390,6 +418,10 @@ export function listTrustArguments(packageName: string): string[] {
 
 export function interactiveTrustArguments(packageName: string): string[] {
 	return ['trust', 'list', packageName, '--registry', NPM_REGISTRY]
+}
+
+export function revokeTrustArguments(packageName: string, id: string): string[] {
+	return ['trust', 'revoke', packageName, '--id', id, '--yes', '--json', '--registry', NPM_REGISTRY]
 }
 
 export function createTrustArguments(packageName: string, target: TrustTarget): string[] {

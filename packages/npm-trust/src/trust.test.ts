@@ -8,10 +8,11 @@ import {
 	createTrustArguments,
 	createTrustTarget,
 	discoverPublishablePackages,
-	isExactTrustConfiguration,
 	listTrustArguments,
+	matchesTrustTarget,
 	parseTrustList,
 	planPackageTrust,
+	revokeTrustArguments,
 	setupOptionsSchema,
 	type GithubTrustConfiguration,
 	type PublishablePackage,
@@ -46,14 +47,14 @@ const PACKAGE: PublishablePackage = {
 	relativeDir: 'packages/core',
 }
 
-const EXACT_CONFIGURATION: GithubTrustConfiguration = {
+const EXACT_CONFIGURATION = {
 	type: 'github',
 	id: 'trust-1',
 	repository: 'utilities-studio/lena',
 	file: 'publish.yml',
 	environment: 'npm-publish',
 	permissions: ['createPackage'],
-}
+} satisfies GithubTrustConfiguration
 
 afterEach(async () => {
 	await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })))
@@ -121,6 +122,13 @@ describe('npm command arguments', () => {
 			'https://registry.npmjs.org',
 		])
 	})
+
+	test('revokes only the specified package trust ID', () => {
+		expect(revokeTrustArguments('@lena-inc/core', 'trust-1')).toEqual([
+			'trust', 'revoke', '@lena-inc/core', '--id', 'trust-1', '--yes', '--json', '--registry',
+			'https://registry.npmjs.org',
+		])
+	})
 })
 
 describe('npm trust output', () => {
@@ -138,7 +146,7 @@ describe('npm trust output', () => {
 		expect(parseTrustList(concatenated)).toEqual([EXACT_CONFIGURATION, second])
 	})
 
-	test('retains foreign providers only as sanitized conflict metadata', () => {
+	test('retains foreign providers only as sanitized replacement metadata', () => {
 		expect(parseTrustList('{"id":"other-1","type":"gitlab","untrusted":"value"}')).toEqual([
 			{ id: 'other-1', provider: 'gitlab', type: 'other' },
 		])
@@ -156,6 +164,23 @@ describe('npm trust output', () => {
 })
 
 describe('trust planning', () => {
+	test.each([
+		[['createPackage'], ['createPackage'], true],
+		[['createPackage'], ['createStagedPackage'], false],
+		[['createPackage'], ['createPackage', 'createStagedPackage'], true],
+		[['createStagedPackage'], ['createPackage'], false],
+		[['createStagedPackage'], ['createStagedPackage'], true],
+		[['createStagedPackage'], ['createPackage', 'createStagedPackage'], false],
+		[['createPackage', 'createStagedPackage'], ['createPackage'], false],
+		[['createPackage', 'createStagedPackage'], ['createStagedPackage'], false],
+		[['createPackage', 'createStagedPackage'], ['createPackage', 'createStagedPackage'], true],
+	] as const)('matches requested permissions %j against npm permissions %j: %s', (requested, granted, matches) => {
+		const target: TrustTarget = { ...TARGET, permissions: [...requested] }
+		const configuration: GithubTrustConfiguration = { ...EXACT_CONFIGURATION, permissions: [...granted] }
+		expect(matchesTrustTarget(configuration, target)).toBe(matches)
+		expect(planPackageTrust(PACKAGE, [configuration], target).action).toBe(matches ? 'unchanged' : 'replace')
+	})
+
 	test('matches permissions independent of order but keeps every field exact', () => {
 		const target: TrustTarget = {
 			...TARGET,
@@ -166,13 +191,13 @@ describe('trust planning', () => {
 			permissions: ['createStagedPackage', 'createPackage'],
 		}
 
-		expect(isExactTrustConfiguration(reordered, target)).toBe(true)
-		expect(isExactTrustConfiguration({ ...reordered, environment: undefined }, target)).toBe(false)
-		expect(isExactTrustConfiguration({ ...reordered, repository: 'Utilities-Studio/lena' }, target)).toBe(false)
-		expect(isExactTrustConfiguration({ ...reordered, permissions: ['createPackage'] }, target)).toBe(false)
+		expect(matchesTrustTarget(reordered, target)).toBe(true)
+		expect(matchesTrustTarget({ ...reordered, environment: undefined }, target)).toBe(false)
+		expect(matchesTrustTarget({ ...reordered, repository: 'Utilities-Studio/lena' }, target)).toBe(false)
+		expect(matchesTrustTarget({ ...reordered, permissions: ['createPackage'] }, target)).toBe(false)
 	})
 
-	test('creates only with no records and conflicts rather than replacing drift', () => {
+	test('creates missing records, skips exact records, and replaces drift', () => {
 		expect(planPackageTrust(PACKAGE, [], TARGET)).toEqual({ action: 'create', package: PACKAGE })
 		expect(planPackageTrust(PACKAGE, [EXACT_CONFIGURATION], TARGET)).toEqual({
 			action: 'unchanged',
@@ -181,19 +206,32 @@ describe('trust planning', () => {
 
 		const drifted = { ...EXACT_CONFIGURATION, file: 'other.yml' }
 		expect(planPackageTrust(PACKAGE, [drifted], TARGET)).toEqual({
-			action: 'conflict',
+			action: 'replace',
 			configurations: [drifted],
 			package: PACKAGE,
 		})
 	})
 
-	test('treats every additional publisher as a conflict', () => {
+	test('replaces additional publishers with the requested configuration', () => {
 		const foreign = { id: 'other-1', provider: 'gitlab', type: 'other' as const }
 		expect(planPackageTrust(PACKAGE, [EXACT_CONFIGURATION, foreign], TARGET)).toEqual({
-			action: 'conflict',
+			action: 'replace',
 			configurations: [EXACT_CONFIGURATION, foreign],
 			package: PACKAGE,
 		})
+	})
+
+	test('replaces an unscoped environment even with npm-added staging permissions', () => {
+		const existing = {
+			...EXACT_CONFIGURATION,
+			environment: undefined,
+			permissions: ['createPackage', 'createStagedPackage'] as const,
+		}
+		expect(planPackageTrust(PACKAGE, [{ ...existing, permissions: [...existing.permissions] }], TARGET).action).toBe('replace')
+	})
+
+	test('rejects replacement records without IDs during preflight', () => {
+		expect(() => planPackageTrust(PACKAGE, [{ ...EXACT_CONFIGURATION, id: undefined, file: 'old.yml' }], TARGET)).toThrow('cannot replace a trust record without an ID')
 	})
 })
 

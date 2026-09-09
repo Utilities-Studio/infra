@@ -4,9 +4,11 @@ import { z } from 'zod'
 import {
 	createTrustArguments,
 	interactiveTrustArguments,
-	isExactTrustConfiguration,
 	listTrustArguments,
+	matchesTrustTarget,
+	parseCreatedTrust,
 	parseTrustList,
+	revokeTrustArguments,
 	type TrustConfiguration,
 	type TrustTarget,
 } from './trust'
@@ -44,7 +46,7 @@ async function runNpm(args: string[], cwd: string): Promise<CommandResult> {
 	}
 }
 
-function npmFailure(operation: 'access check' | 'configuration', packageName: string, result: CommandResult): Error {
+function npmFailure(operation: 'access check' | 'configuration' | 'revocation', packageName: string, result: CommandResult): Error {
 	const output = result.stderr
 
 	if (/ENEEDAUTH|EOTP|\b401\b/i.test(output)) {
@@ -128,8 +130,13 @@ export async function createPackageTrust(
 	const result = await runNpm(createTrustArguments(packageName, target), cwd)
 	if (result.exitCode !== 0) throw npmFailure('configuration', packageName, result)
 
-	const created = parseTrustList(result.stdout)
-	if (created.length !== 1 || !isExactTrustConfiguration(created[0], target)) {
+	const created = parseCreatedTrust(result.stdout)
+	if (created.length !== 1 || !matchesTrustTarget(created[0], target)) {
 		throw new Error(`${packageName}: npm returned an unexpected trust configuration after creation.`)
 	}
+}
+
+export async function revokePackageTrust(packageName: string, id: string, cwd: string): Promise<void> {
+	const result = await runNpm(revokeTrustArguments(packageName, id), cwd)
+	if (result.exitCode !== 0) throw npmFailure('revocation', packageName, result)
 }

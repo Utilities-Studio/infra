@@ -8,11 +8,13 @@ import {
 	createPackageTrust,
 	ensureSupportedNpm,
 	listPackageTrust,
+	revokePackageTrust,
 	unlockNpmTrust,
 } from './npm-client'
 import {
 	createTrustTarget,
 	discoverPublishablePackages,
+	matchesTrustTarget,
 	planPackageTrust,
 	setupOptionsSchema,
 	type PackageTrustPlan,
@@ -59,8 +61,8 @@ function printPlan(plans: PackageTrustPlan[]): void {
 			console.log(`  ${colors.yellow('create')}     ${plan.package.name}`)
 			continue
 		}
-		if (plan.action === 'conflict') {
-			console.log(`  ${colors.red('conflict')}   ${plan.package.name}`)
+		if (plan.action === 'replace') {
+			console.log(`  ${colors.yellow('replace')}    ${plan.package.name}`)
 			for (const configuration of plan.configurations) {
 				console.log(`             ${trustSummary(configuration)}`)
 			}
@@ -102,7 +104,10 @@ async function preflight(options: SetupOptions) {
 	console.log(`Repository: ${target.repository}`)
 	console.log(`Workflow: ${target.file}`)
 	console.log(`Environment: ${target.environment ?? 'none'}`)
-	console.log(`Permissions: ${target.permissions.join(', ')}`)
+	console.log(`Requested permissions: ${target.permissions.join(', ')}`)
+	if (options.allowPublish && !options.allowStagePublish) {
+		console.log('npm also grants staged publishing to new trusted publishers.')
+	}
 
 	const npmVersion = await ensureSupportedNpm(discovered.rootDir)
 	console.log(`npm: ${npmVersion}`)
@@ -128,12 +133,19 @@ async function applyPlans(
 	target: ReturnType<typeof createTrustTarget>,
 	rootDir: string,
 ): Promise<void> {
-	const pending = plans.filter((plan) => plan.action === 'create')
+	const pending = plans.filter((plan) => plan.action !== 'unchanged')
 	const completed: string[] = []
 
 	for (let index = 0; index < pending.length; index++) {
-		const package_ = pending[index].package
+		const plan = pending[index]
+		const package_ = plan.package
 		try {
+			if (plan.action === 'replace') {
+				for (const configuration of plan.configurations) {
+					await revokePackageTrust(package_.name, configuration.id, rootDir)
+					await Bun.sleep(RATE_LIMIT_DELAY_MS)
+				}
+			}
 			await createPackageTrust(package_.name, target, rootDir)
 			completed.push(package_.name)
 			console.log(`  ${colors.green('configured')} ${package_.name}`)
@@ -145,7 +157,7 @@ async function applyPlans(
 			} catch {
 				current = []
 			}
-			if (planPackageTrust(package_, current, target).action === 'unchanged') {
+			if (current.length === 1 && matchesTrustTarget(current[0], target)) {
 				completed.push(package_.name)
 				console.log(`  ${colors.green('configured')} ${package_.name} (confirmed after retry)`)
 				if (index < pending.length - 1) await Bun.sleep(RATE_LIMIT_DELAY_MS)
@@ -167,7 +179,7 @@ async function applyPlans(
 	}
 }
 
-async function configureGithub(raw: Record<string, unknown>): Promise<void> {
+export async function configureGithub(raw: Record<string, unknown>): Promise<void> {
 	const options = parseSetupOptions(raw)
 
 	if (!isInteractive()) {
@@ -177,32 +189,25 @@ async function configureGithub(raw: Record<string, unknown>): Promise<void> {
 	const { plans, rootDir, target } = await preflight(options)
 	printPlan(plans)
 
-	const conflicts = plans.filter((plan) => plan.action === 'conflict')
-	if (conflicts.length > 0) {
-		throw new Error(
-			'No changes made. Revoke or reconcile conflicting npm trust records manually, then rerun.',
-		)
-	}
-
-	const createCount = plans.filter((plan) => plan.action === 'create').length
-	if (createCount === 0) {
+	const changeCount = plans.filter((plan) => plan.action !== 'unchanged').length
+	if (changeCount === 0) {
 		console.log('\nAll packages already have the requested trust configuration.')
 		return
 	}
 
 	if (!options.apply) {
-		console.log(`\nPlan only. Rerun with --apply to configure ${createCount} package${createCount === 1 ? '' : 's'}.`)
+		console.log(`\nPlan only. Rerun with --apply to configure ${changeCount} package${changeCount === 1 ? '' : 's'}.`)
 		return
 	}
 
-	if (!options.yes && !(await confirmApply(createCount))) {
+	if (!options.yes && !(await confirmApply(changeCount))) {
 		console.log('No changes made.')
 		return
 	}
 
 	console.log('\nApplying npm trust configuration:')
 	await applyPlans(plans, target, rootDir)
-	console.log(`\nConfigured ${createCount} package${createCount === 1 ? '' : 's'}.`)
+	console.log(`\nConfigured ${changeCount} package${changeCount === 1 ? '' : 's'}.`)
 }
 
 async function readVersion(): Promise<string> {
@@ -223,7 +228,7 @@ async function main(): Promise<void> {
 		.option('--cwd <path>', 'Repository path (default: current directory)')
 		.option('--allow-publish', 'Allow immediate package publication')
 		.option('--allow-stage-publish', 'Allow staged package publication')
-		.option('--apply', 'Create missing trust configurations after preflight')
+		.option('--apply', 'Create missing and replace differing trust configurations after preflight')
 		.option('-y, --yes', 'Skip the final wrapper confirmation')
 		.example(
 			'npm-trust github --repo utilities-studio/lena --file publish.yml --env npm-publish --allow-publish --apply',
