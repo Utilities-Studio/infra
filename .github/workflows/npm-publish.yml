@@ -133,7 +133,7 @@ jobs:
       - name: Generate changesets from Conventional Commits
         env:
           RELEASE_TOOLS: ${{ github.workspace }}/.github/npm-release-tools
-        run: bun --no-env-file x --bun run-func "$RELEASE_TOOLS/src/changeset/create-changesets-for-recent-commits.ts" createChangesetsForRecentCommits
+        run: bun --no-env-file x --bun run-func "$(realpath --relative-to="$PWD" "$RELEASE_TOOLS/src/changeset/create-changesets-for-recent-commits.ts")" createChangesetsForRecentCommits
 
       - name: Select Changesets release mode
         id: release-mode

@@ -36,6 +36,13 @@ describe('Changesets release workflow', () => {
 		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|secrets\.|actions\/cache@/)
 	})
 
+	test('passes the generator path relative to the caller working directory', async () => {
+		const workflow = await Bun.file(sharedPath).text()
+
+		expect(workflow).toContain('run-func "$(realpath --relative-to="$PWD" "$RELEASE_TOOLS/src/changeset/create-changesets-for-recent-commits.ts")" createChangesetsForRecentCommits')
+		expect(workflow).not.toContain('run-func "$RELEASE_TOOLS/')
+	})
+
 	test('uses Changesets mode selection to guard versioning and commits while allowing publish retries', async () => {
 		const workflow = await Bun.file(sharedPath).text()
 		const install = workflow.indexOf('- name: Install dependencies')
