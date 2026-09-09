@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -14,7 +14,7 @@ import { configureGithub } from './index'
 const ORIGINAL_PATH = process.env.PATH
 const TARGET: TrustTarget = {
 	type: 'github',
-	repository: 'utilities-studio/lena',
+	repository: 'example-org/example-repo',
 	file: 'publish.yml',
 	environment: 'npm-publish',
 	permissions: ['createPackage'],
@@ -40,7 +40,7 @@ beforeEach(async () => {
 	await Bun.write(
 		executable,
 		`#!/usr/bin/env -S bun --no-env-file
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 if (process.env.FAKE_NPM_COMMAND_LOG) appendFileSync(process.env.FAKE_NPM_COMMAND_LOG, JSON.stringify(args) + '\\n')
 if (args[0] === '--version') {
@@ -48,6 +48,16 @@ if (args[0] === '--version') {
   process.exit(0)
 }
 const isCreate = args[0] === 'trust' && args[1] === 'github'
+if (args[1] === process.env.FAKE_NPM_REQUIRE_PARALLEL && args.includes('--json')) {
+  let overlapping = false
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const commands = readFileSync(process.env.FAKE_NPM_COMMAND_LOG, 'utf8').trim().split('\\n').map(line => JSON.parse(line))
+    overlapping = new Set(commands.filter(command => command[1] === args[1] && command.includes('--json')).map(command => command[2])).size >= 2
+    if (overlapping) break
+    await Bun.sleep(10)
+  }
+  if (!overlapping) { console.error('E503: commands did not overlap'); process.exit(1) }
+}
 if (isCreate) {
   // npm 11.16 logs its requested options before printing the created record.
   const option = flag => args[args.indexOf(flag) + 1]
@@ -72,19 +82,17 @@ if (exitCode !== 0) {
   process.exit(exitCode)
 }
 if (process.env.FAKE_NPM_STATE_FILE) {
-  const file = Bun.file(process.env.FAKE_NPM_STATE_FILE)
-  const state = await file.json()
   const name = args[2]
+  const file = Bun.file(process.env.FAKE_NPM_STATE_FILE + '/' + encodeURIComponent(name) + '.json')
+  const state = await file.exists() ? await file.json() : []
   if (args[1] === 'list') {
-    console.log(JSON.stringify(state[name] ?? []))
+    console.log(JSON.stringify(state))
   } else if (args[1] === 'revoke') {
     const id = args[args.indexOf('--id') + 1]
-    state[name] = (state[name] ?? []).filter(record => record.id !== id)
-    await Bun.write(file, JSON.stringify(state))
+    await Bun.write(file, JSON.stringify(state.filter(record => record.id !== id)))
   } else if (isCreate) {
     const created = JSON.parse(process.env.FAKE_NPM_CREATE_JSON)
-    state[name] = [created]
-    await Bun.write(file, JSON.stringify(state))
+    await Bun.write(file, JSON.stringify([created]))
     console.log(name === process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE ? '{ malformed' : JSON.stringify(created))
   }
   process.exit(0)
@@ -109,13 +117,14 @@ afterEach(async () => {
 	delete process.env.FAKE_NPM_FAIL_ACTION
 	delete process.env.FAKE_NPM_FAIL_PACKAGE
 	delete process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE
+	delete process.env.FAKE_NPM_REQUIRE_PARALLEL
 	await rm(fakeDirectory, { force: true, recursive: true })
 })
 
 async function prepareCli(
 	state: Record<string, unknown[]>,
 	target: TrustTarget = TARGET,
-	packageNames = ['@lena-inc/core', '@lena-inc/extra', '@lena-inc/missing'],
+	packageNames = ['@example/core', '@example/extra', '@example/missing'],
 ): Promise<void> {
 	const workflowDirectory = join(fakeDirectory, '.github', 'workflows')
 	await mkdir(workflowDirectory, { recursive: true })
@@ -134,7 +143,18 @@ async function prepareCli(
 	process.env.FAKE_NPM_CREATE_JSON = trustJson({
 		...target, permissions: [...new Set([...target.permissions, 'createStagedPackage'])],
 	})
-	await Bun.write(process.env.FAKE_NPM_STATE_FILE, JSON.stringify(state))
+	await mkdir(process.env.FAKE_NPM_STATE_FILE)
+	for (const [name, records] of Object.entries(state)) {
+		await Bun.write(join(process.env.FAKE_NPM_STATE_FILE, `${encodeURIComponent(name)}.json`), JSON.stringify(records))
+	}
+}
+
+async function fakeState(): Promise<Record<string, unknown[]>> {
+	const directory = join(fakeDirectory, 'state.json')
+	const entries = await Promise.all((await readdir(directory)).map(async file =>
+		[decodeURIComponent(file.slice(0, -5)), await Bun.file(join(directory, file)).json()] as const,
+	))
+	return Object.fromEntries(entries)
 }
 
 async function runCli(args: string[] = [], target: TrustTarget = TARGET) {
@@ -148,7 +168,6 @@ async function runCli(args: string[] = [], target: TrustTarget = TARGET) {
 	process.env.GITHUB_ACTIONS = 'false'
 	const messages: string[] = []
 	const log = spyOn(console, 'log').mockImplementation((...values) => { messages.push(values.join(' ')) })
-	const sleep = spyOn(Bun, 'sleep').mockResolvedValue(undefined)
 	try {
 		await configureGithub({
 			cwd: fakeDirectory, repo: target.repository, file: target.file, env: target.environment,
@@ -161,7 +180,6 @@ async function runCli(args: string[] = [], target: TrustTarget = TARGET) {
 		return { stdout: messages.join('\n'), stderr: String(error), exitCode: 1 }
 	} finally {
 		log.mockRestore()
-		sleep.mockRestore()
 		if (stdinTty) Object.defineProperty(process.stdin, 'isTTY', stdinTty)
 		else Reflect.deleteProperty(process.stdin, 'isTTY')
 		if (stdoutTty) Object.defineProperty(process.stdout, 'isTTY', stdoutTty)
@@ -178,6 +196,15 @@ async function npmCommands(): Promise<string[][]> {
 }
 
 describe.serial('npm trust CLI replacement', () => {
+	test.each(['list', 'github'])('runs %s for different packages concurrently and applies without another prompt', async (action) => {
+		await prepareCli({})
+		process.env.FAKE_NPM_REQUIRE_PARALLEL = action
+		const result = await runCli(['--apply'])
+		expect(result.exitCode).toBe(0)
+		expect(result.stdout).toContain('Configured 3 packages.')
+		expect(result.stdout).not.toContain('[y/N]')
+	})
+
 	test('finishes the seven-package infra batch with npm-added staging and makes no changes on rerun', async () => {
 		const target: TrustTarget = { ...TARGET, repository: 'Utilities-Studio/infra', file: 'release-package.yml' }
 		const packageNames = ['env-encrypt', 'env-local', 'github-env', 'npm-trust', 'stripe-sync', 'sync-env', 'vite-env']
@@ -200,7 +227,7 @@ describe.serial('npm trust CLI replacement', () => {
 		expect(mutations.some(args => args[2] === '@utilities-studio/env-encrypt')).toBe(false)
 		expect(mutations.filter(args => args[1] === 'revoke')).toHaveLength(5)
 		expect(mutations.filter(args => args[1] === 'github')).toHaveLength(6)
-		const current = await Bun.file(join(fakeDirectory, 'state.json')).json()
+		const current = await fakeState()
 		for (const name of packageNames) expect(current[name]).toEqual([configured])
 
 		const rerun = await runCli(['--apply', '--yes'], target)
@@ -211,61 +238,61 @@ describe.serial('npm trust CLI replacement', () => {
 
 	test('confirms a saved record with npm-added staging after creation output cannot be parsed', async () => {
 		await prepareCli({})
-		process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE = '@lena-inc/core'
+		process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE = '@example/core'
 		const result = await runCli(['--apply', '--yes'])
 		expect(result.exitCode).toBe(0)
-		expect(result.stdout).toContain('@lena-inc/core (confirmed after retry)')
-		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@lena-inc/core')).toHaveLength(1)
+		expect(result.stdout).toContain('@example/core (confirmed after retry)')
+		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@example/core')).toHaveLength(1)
 	})
 
 	test('replaces direct publishing when only staged publishing is requested', async () => {
 		const target: TrustTarget = { ...TARGET, permissions: ['createStagedPackage'] }
-		await prepareCli({ '@lena-inc/core': [JSON.parse(trustJson())] }, target)
+		await prepareCli({ '@example/core': [JSON.parse(trustJson())] }, target)
 		const result = await runCli(['--apply', '--yes'], target)
 		expect(result.exitCode).toBe(0)
-		expect((await npmCommands()).some(args => args[1] === 'revoke' && args[2] === '@lena-inc/core')).toBe(true)
-		const state = await Bun.file(join(fakeDirectory, 'state.json')).json()
+		expect((await npmCommands()).some(args => args[1] === 'revoke' && args[2] === '@example/core')).toBe(true)
+		const state = await fakeState()
 		for (const records of Object.values(state)) {
 			expect(records).toEqual([JSON.parse(trustJson({ permissions: ['createStagedPackage'] }))])
 		}
 	})
 
 	test('previews replacements without changing trust', async () => {
-		const state = { '@lena-inc/core': [JSON.parse(trustJson({ environment: undefined, permissions: ['createPackage', 'createStagedPackage'] }))] }
+		const state = { '@example/core': [JSON.parse(trustJson({ environment: undefined, permissions: ['createPackage', 'createStagedPackage'] }))] }
 		await prepareCli(state)
 		const result = await runCli()
 		expect(result).toMatchObject({ exitCode: 0 })
 		expect(result.stdout).toContain('replace')
 		expect(result.stdout).toContain('Plan only')
-		expect(await Bun.file(join(fakeDirectory, 'state.json')).json()).toEqual(state)
+		expect(await fakeState()).toEqual(state)
 		expect((await npmCommands()).some(args => ['revoke', 'github'].includes(args[1]))).toBe(false)
 	})
 
 	test('preflights all packages before replacing, skips exact records, and creates missing records', async () => {
 		await prepareCli({
-			'@lena-inc/core': [JSON.parse(trustJson({ id: 'old-1', environment: undefined })), { id: 'old-2', type: 'gitlab' }],
-			'@lena-inc/extra': [JSON.parse(trustJson())],
+			'@example/core': [JSON.parse(trustJson({ id: 'old-1', environment: undefined })), { id: 'old-2', type: 'gitlab' }],
+			'@example/extra': [JSON.parse(trustJson())],
 		})
 		const result = await runCli(['--apply', '--yes'])
 		expect(result.exitCode).toBe(0)
 		expect(result.stdout).not.toContain('confirmed after retry')
 		const commands = await npmCommands()
 		const mutations = commands.filter(args => ['revoke', 'github'].includes(args[1]))
-		expect(mutations.map(args => args.slice(1, 3))).toEqual([
-			['revoke', '@lena-inc/core'], ['revoke', '@lena-inc/core'],
-			['github', '@lena-inc/core'], ['github', '@lena-inc/missing'],
-		])
-		expect(mutations.slice(0, 2).map(args => args[args.indexOf('--id') + 1])).toEqual(['old-1', 'old-2'])
+		const core = mutations.filter(args => args[2] === '@example/core')
+		expect(core.map(args => args[1])).toEqual(['revoke', 'revoke', 'github'])
+		expect(core.slice(0, 2).map(args => args[args.indexOf('--id') + 1])).toEqual(['old-1', 'old-2'])
+		expect(mutations.filter(args => args[2] === '@example/missing').map(args => args[1])).toEqual(['github'])
+		expect(mutations.some(args => args[2] === '@example/extra')).toBe(false)
 		const preflight = commands.slice(0, commands.indexOf(mutations[0])).filter(args => args[1] === 'list').map(args => args[2])
-		expect(new Set(preflight)).toEqual(new Set(['@lena-inc/core', '@lena-inc/extra', '@lena-inc/missing']))
-		const state = await Bun.file(join(fakeDirectory, 'state.json')).json()
+		expect(new Set(preflight)).toEqual(new Set(['@example/core', '@example/extra', '@example/missing']))
+		const state = await fakeState()
 		for (const records of Object.values(state)) expect(records).toEqual([JSON.parse(trustJson())])
 	})
 
 	test('fails preflight without mutations when a replacement record has no ID', async () => {
 		await prepareCli({
-			'@lena-inc/core': [JSON.parse(trustJson({ file: 'old.yml' }))],
-			'@lena-inc/extra': [JSON.parse(trustJson({ id: undefined, file: 'old.yml' }))],
+			'@example/core': [JSON.parse(trustJson({ file: 'old.yml' }))],
+			'@example/extra': [JSON.parse(trustJson({ id: undefined, file: 'old.yml' }))],
 		})
 		const result = await runCli(['--apply', '--yes'])
 		expect(result.exitCode).toBe(1)
@@ -273,31 +300,33 @@ describe.serial('npm trust CLI replacement', () => {
 		expect((await npmCommands()).some(args => ['revoke', 'github'].includes(args[1]))).toBe(false)
 	})
 
-	test('stops on revoke failure before creating anything', async () => {
-		const state = { '@lena-inc/core': [JSON.parse(trustJson({ file: 'old.yml' }))] }
+	test('stops the failed package after revoke failure and finishes independent packages', async () => {
+		const state = { '@example/core': [JSON.parse(trustJson({ file: 'old.yml' }))] }
 		await prepareCli(state)
 		process.env.FAKE_NPM_FAIL_ACTION = 'revoke'
-		process.env.FAKE_NPM_FAIL_PACKAGE = '@lena-inc/core'
+		process.env.FAKE_NPM_FAIL_PACKAGE = '@example/core'
 		const result = await runCli(['--apply', '--yes'])
 		expect(result.exitCode).toBe(1)
-		expect(await Bun.file(join(fakeDirectory, 'state.json')).json()).toEqual(state)
-		expect((await npmCommands()).some(args => args[1] === 'github')).toBe(false)
+		expect((await fakeState())['@example/core']).toEqual(state['@example/core'])
+		expect((await npmCommands()).some(args => args[1] === 'github' && args[2] === '@example/core')).toBe(false)
+		expect(result.stderr).toContain('Completed: @example/extra, @example/missing')
+		expect(result.stderr).toContain('Pending: @example/core')
 	})
 
 	test('reports partial progress and resumes missing trust after creation fails', async () => {
-		await prepareCli({ '@lena-inc/extra': [JSON.parse(trustJson({ file: 'old.yml' }))] })
+		await prepareCli({ '@example/extra': [JSON.parse(trustJson({ file: 'old.yml' }))] })
 		process.env.FAKE_NPM_FAIL_ACTION = 'github'
-		process.env.FAKE_NPM_FAIL_PACKAGE = '@lena-inc/extra'
+		process.env.FAKE_NPM_FAIL_PACKAGE = '@example/extra'
 		const failed = await runCli(['--apply', '--yes'])
 		expect(failed.exitCode).toBe(1)
-		expect(failed.stderr).toContain('Completed: @lena-inc/core')
-		expect(failed.stderr).toContain('Pending: @lena-inc/extra, @lena-inc/missing')
-		expect((await Bun.file(join(fakeDirectory, 'state.json')).json())['@lena-inc/extra']).toEqual([])
+		expect(failed.stderr).toContain('Completed: @example/core, @example/missing')
+		expect(failed.stderr).toContain('Pending: @example/extra')
+		expect((await fakeState())['@example/extra']).toEqual([])
 		delete process.env.FAKE_NPM_FAIL_ACTION
 		delete process.env.FAKE_NPM_FAIL_PACKAGE
 		const resumed = await runCli(['--apply', '--yes'])
 		expect(resumed.exitCode).toBe(0)
-		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@lena-inc/core')).toHaveLength(1)
+		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@example/core')).toHaveLength(1)
 	})
 })
 
@@ -312,10 +341,10 @@ describe.serial('npm client boundary', () => {
 
 	test('parses list output and npm creation output with an options preview before the record', async () => {
 		process.env.FAKE_NPM_LIST_JSON = trustJson()
-		expect(await listPackageTrust('@lena-inc/core', process.cwd())).toHaveLength(1)
+		expect(await listPackageTrust('@example/core', process.cwd())).toHaveLength(1)
 
 		process.env.FAKE_NPM_CREATE_JSON = trustJson()
-		await expect(createPackageTrust('@lena-inc/core', TARGET, process.cwd())).resolves.toBeUndefined()
+		await expect(createPackageTrust('@example/core', TARGET, process.cwd())).resolves.toBeUndefined()
 	})
 
 	test.each([
@@ -325,7 +354,7 @@ describe.serial('npm client boundary', () => {
 		{ permissions: ['createStagedPackage'] },
 	])('rejects a created record that differs from the requested trust: %j', async (overrides) => {
 		process.env.FAKE_NPM_CREATE_JSON = trustJson(overrides)
-		return expect(createPackageTrust('@lena-inc/core', TARGET, process.cwd())).rejects.toThrow(
+		return expect(createPackageTrust('@example/core', TARGET, process.cwd())).rejects.toThrow(
 			'unexpected trust configuration',
 		)
 	})
@@ -333,13 +362,13 @@ describe.serial('npm client boundary', () => {
 	test('rejects direct-publish access returned for a stage-only request', async () => {
 		process.env.FAKE_NPM_CREATE_JSON = trustJson()
 		const target: TrustTarget = { ...TARGET, permissions: ['createStagedPackage'] }
-		return expect(createPackageTrust('@lena-inc/core', target, process.cwd())).rejects.toThrow(
+		return expect(createPackageTrust('@example/core', target, process.cwd())).rejects.toThrow(
 			'unexpected trust configuration',
 		)
 	})
 
 	test('does not treat the options preview alone as successful creation', async () => {
-		return expect(createPackageTrust('@lena-inc/core', TARGET, process.cwd())).rejects.toThrow(
+		return expect(createPackageTrust('@example/core', TARGET, process.cwd())).rejects.toThrow(
 			'unexpected trust configuration',
 		)
 	})
@@ -349,7 +378,7 @@ describe.serial('npm client boundary', () => {
 		[trustJson({ type: undefined }), 'Invalid npm trust record'],
 	])('rejects invalid records after the options preview: %s', async (output, message) => {
 		process.env.FAKE_NPM_CREATE_JSON = output
-		return expect(createPackageTrust('@lena-inc/core', TARGET, process.cwd())).rejects.toThrow(message)
+		return expect(createPackageTrust('@example/core', TARGET, process.cwd())).rejects.toThrow(message)
 	})
 
 	test('returns package-scoped guidance without replaying captured npm output', async () => {
@@ -357,11 +386,11 @@ describe.serial('npm client boundary', () => {
 		process.env.FAKE_NPM_STDERR = 'npm error E404 sensitive-registry-detail'
 
 		try {
-			await listPackageTrust('@lena-inc/missing', process.cwd())
+			await listPackageTrust('@example/missing', process.cwd())
 			throw new Error('Expected listPackageTrust to fail')
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
-			expect(message).toContain('@lena-inc/missing: package not found')
+			expect(message).toContain('@example/missing: package not found')
 			expect(message).not.toContain('sensitive-registry-detail')
 		}
 	})

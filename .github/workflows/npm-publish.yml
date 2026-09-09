@@ -34,7 +34,7 @@ on:
         type: string
         default: "bun run release:publish"
 
-# The caller grants contents: write, pull-requests: write, and id-token: write.
+# The caller grants contents: write and id-token: write.
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -64,7 +64,7 @@ jobs:
           fi
 
   publish:
-    name: Version or publish npm packages
+    name: Version and publish npm packages
     needs: validate-ref
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -75,13 +75,14 @@ jobs:
 
     steps:
       - name: Checkout caller repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7
         with:
           node-version: "24.15.0"
           registry-url: "https://registry.npmjs.org"
@@ -91,7 +92,7 @@ jobs:
         run: npm install --global npm@12.0.2 --ignore-scripts
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ inputs.bun_version }}
 
@@ -117,6 +118,12 @@ jobs:
           set -euo pipefail
           bash --noprofile --norc -e -u -o pipefail -c "$INSTALL_COMMAND"
 
+      - name: Version packages with Changesets
+        env:
+          VERSION_COMMAND: ${{ inputs.version_command }}
+        shell: bash
+        run: bash --noprofile --norc -e -u -o pipefail -c "$VERSION_COMMAND"
+
       - name: Verify release
         env:
           VERIFY_COMMAND: ${{ inputs.verify_command }}
@@ -125,11 +132,20 @@ jobs:
           set -euo pipefail
           bash --noprofile --norc -e -u -o pipefail -c "$VERIFY_COMMAND"
 
-      - name: Create release PR or publish packages
-        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+      - name: Commit version updates to the default branch
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          branch: ${{ github.event.repository.default_branch }}
+          commit_message: "chore(release): version packages [skip ci]"
+          skip_fetch: true
+          skip_checkout: true
+
+      - name: Publish versioned packages
+        uses: changesets/action@2
         with:
           cwd: ${{ inputs.working_directory }}
           version-script: ${{ inputs.version_command }}
           publish-script: ${{ inputs.publish_command }}
+          push-with-git-cli: true
         env:
           NPM_CONFIG_PROVENANCE: "true"

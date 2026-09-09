@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { cac } from 'cac'
 import pc from 'picocolors'
-import { createInterface } from 'node:readline/promises'
 import { z } from 'zod'
 
 import {
@@ -24,7 +23,6 @@ import {
 
 const packageVersionSchema = z.object({ version: z.string().min(1) })
 const colors = pc.createColors(Boolean(process.stdout.isTTY && !process.env.NO_COLOR))
-const RATE_LIMIT_DELAY_MS = 2_000
 
 function errorMessage(error: unknown): string {
 	if (error instanceof z.ZodError) {
@@ -73,16 +71,6 @@ function printPlan(plans: PackageTrustPlan[]): void {
 	}
 }
 
-async function confirmApply(count: number): Promise<boolean> {
-	const readline = createInterface({ input: process.stdin, output: process.stdout })
-	try {
-		const answer = await readline.question(`\nConfigure ${count} package${count === 1 ? '' : 's'}? [y/N] `)
-		return answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes'
-	} finally {
-		readline.close()
-	}
-}
-
 function parseSetupOptions(raw: Record<string, unknown>): SetupOptions {
 	return setupOptionsSchema.parse({
 		allowPublish: Boolean(raw.allowPublish),
@@ -115,15 +103,15 @@ async function preflight(options: SetupOptions) {
 	console.log('\nThe next npm command may request 2FA.')
 	console.log('When npm offers it, select the five-minute 2FA skip for this batch.')
 	await unlockNpmTrust(discovered.packages[0].name, discovered.rootDir)
-	await Bun.sleep(RATE_LIMIT_DELAY_MS)
 
-	const plans: PackageTrustPlan[] = []
-	for (let index = 0; index < discovered.packages.length; index++) {
-		const package_ = discovered.packages[index]
+	const results = await Promise.allSettled(discovered.packages.map(async (package_) => {
 		const configurations = await listPackageTrust(package_.name, discovered.rootDir)
-		plans.push(planPackageTrust(package_, configurations, target))
-		if (index < discovered.packages.length - 1) await Bun.sleep(RATE_LIMIT_DELAY_MS)
-	}
+		return planPackageTrust(package_, configurations, target)
+	}))
+	const plans = results.map((result) => {
+		if (result.status === 'rejected') throw result.reason
+		return result.value
+	})
 
 	return { plans, rootDir: discovered.rootDir, target }
 }
@@ -134,23 +122,17 @@ async function applyPlans(
 	rootDir: string,
 ): Promise<void> {
 	const pending = plans.filter((plan) => plan.action !== 'unchanged')
-	const completed: string[] = []
-
-	for (let index = 0; index < pending.length; index++) {
-		const plan = pending[index]
+	const outcomes = await Promise.allSettled(pending.map(async (plan) => {
 		const package_ = plan.package
 		try {
 			if (plan.action === 'replace') {
 				for (const configuration of plan.configurations) {
 					await revokePackageTrust(package_.name, configuration.id, rootDir)
-					await Bun.sleep(RATE_LIMIT_DELAY_MS)
 				}
 			}
 			await createPackageTrust(package_.name, target, rootDir)
-			completed.push(package_.name)
 			console.log(`  ${colors.green('configured')} ${package_.name}`)
 		} catch (error) {
-			await Bun.sleep(RATE_LIMIT_DELAY_MS)
 			let current: TrustConfiguration[]
 			try {
 				current = await listPackageTrust(package_.name, rootDir)
@@ -158,24 +140,30 @@ async function applyPlans(
 				current = []
 			}
 			if (current.length === 1 && matchesTrustTarget(current[0], target)) {
-				completed.push(package_.name)
 				console.log(`  ${colors.green('configured')} ${package_.name} (confirmed after retry)`)
-				if (index < pending.length - 1) await Bun.sleep(RATE_LIMIT_DELAY_MS)
-				continue
+				return
 			}
-
-			const remaining = pending.slice(index).map((plan) => plan.package.name)
-			throw new Error(
-				[
-					errorMessage(error),
-					`Completed: ${completed.join(', ') || 'none'}`,
-					`Pending: ${remaining.join(', ')}`,
-					'Rerun the same command after resolving the npm error; completed packages will be skipped.',
-				].join('\n'),
-			)
+			throw error
 		}
-
-		if (index < pending.length - 1) await Bun.sleep(RATE_LIMIT_DELAY_MS)
+	}))
+	const completed: string[] = []
+	const remaining: string[] = []
+	const failures: string[] = []
+	for (const [index, outcome] of outcomes.entries()) {
+		const name = pending[index].package.name
+		if (outcome.status === 'fulfilled') completed.push(name)
+		else {
+			remaining.push(name)
+			failures.push(`${name}: ${errorMessage(outcome.reason)}`)
+		}
+	}
+	if (failures.length) {
+		throw new Error([
+			...failures,
+			`Completed: ${completed.join(', ') || 'none'}`,
+			`Pending: ${remaining.join(', ')}`,
+			'Rerun the same command after resolving the npm error; completed packages will be skipped.',
+		].join('\n'))
 	}
 }
 
@@ -197,11 +185,6 @@ export async function configureGithub(raw: Record<string, unknown>): Promise<voi
 
 	if (!options.apply) {
 		console.log(`\nPlan only. Rerun with --apply to configure ${changeCount} package${changeCount === 1 ? '' : 's'}.`)
-		return
-	}
-
-	if (!options.yes && !(await confirmApply(changeCount))) {
-		console.log('No changes made.')
 		return
 	}
 
@@ -229,7 +212,7 @@ async function main(): Promise<void> {
 		.option('--allow-publish', 'Allow immediate package publication')
 		.option('--allow-stage-publish', 'Allow staged package publication')
 		.option('--apply', 'Create missing and replace differing trust configurations after preflight')
-		.option('-y, --yes', 'Skip the final wrapper confirmation')
+		.option('-y, --yes', 'Accepted for compatibility; --apply already confirms changes')
 		.example(
 			'npm-trust github --repo utilities-studio/lena --file publish.yml --env npm-publish --allow-publish --apply',
 		)

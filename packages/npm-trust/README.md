@@ -27,7 +27,7 @@ bunx @utilities-studio/npm-trust github \
   --apply
 ```
 
-Add `--yes` to skip the wrapper's final confirmation. Native npm authentication and 2FA remain interactive.
+`--apply` confirms the changes without another prompt. `--yes` remains accepted for compatibility. Native npm authentication and 2FA remain interactive.
 
 For staged publishing without direct publishing, use only `--allow-stage-publish`. npm automatically allows staged publishing on new trust records, including those created with `--allow-publish`. The CLI accepts this npm-added permission without replacing a matching publisher. See [npm's allowed-actions contract](https://docs.npmjs.com/trusted-publishers/#for-github-actions).
 
@@ -36,13 +36,13 @@ For staged publishing without direct publishing, use only `--allow-stage-publish
 The command completes in two phases:
 
 1. It validates the repository, workflow, package metadata, registry, npm version, authentication, write access, and every existing trust record.
-2. With `--apply`, it creates missing records and replaces differing records sequentially with npm's recommended two-second request spacing.
+2. With `--apply`, it creates missing records and replaces differing records in parallel across packages, without artificial delays. Each package's old records are revoked before its replacement is created.
 
 No trust record is changed unless every package passes preflight. Existing records with the requested repository, workflow, environment, and permissions are skipped, including npm-added staging access for a direct-publish request. Stage-only requests never accept direct-publish access. Differing records appear as `replace` in the plan. With `--apply`, the CLI revokes those records by ID and creates the requested configuration. Replacement records without IDs stop preflight before any writes.
 
-Replacement is not atomic: if creation fails after revocation, the package can temporarily have no trusted publisher. The CLI stops, reports completed and pending packages, and lets you rerun the same command to create the missing configuration. Completed packages are skipped.
+Replacement is not atomic: if creation fails after revocation, the package can temporarily have no trusted publisher. Independent packages finish before the CLI reports completed and pending packages. Rerun the same command to create missing configurations; completed packages are skipped.
 
-Commands are executed with argument arrays through `Bun.spawn`, not shell strings. This gives the original loop fail-fast behavior without shell interpolation. Partial success is safe to rerun because completed packages are discovered and skipped.
+After the initial interactive npm authentication check, package preflight reads run in parallel. Commands use argument arrays through `Bun.spawn`, without shell interpolation.
 
 ## Authentication boundary
 
@@ -77,7 +77,7 @@ Do not configure the publisher as `utilities-studio/infra` or `npm-publish.yml` 
 `@utilities-studio/npm-trust` cannot configure itself before it exists on npm. Bootstrap it in this order:
 
 1. Install and verify the workspace from Infra's root with `bun install --frozen-lockfile --ignore-scripts` and `bun run check`.
-2. Create and protect Infra's `npm-publish` GitHub environment, restricted to the default branch. Enable GitHub Actions to create pull requests.
+2. Create and protect Infra's `npm-publish` GitHub environment, restricted to the default branch. Allow its release workflow to write version commits to the default branch.
 3. Publish the initial version manually from `packages/npm-trust` before enabling the common release workflow.
 4. Register Infra's common caller workflow as the trusted publisher for every package. The command below bootstraps this package; the [root guide](../../README.md#releasing-infra-packages) covers the entire workspace.
 
@@ -93,4 +93,4 @@ npm trust github @utilities-studio/npm-trust \
   --yes
 ```
 
-Later versions use the same Changesets flow as every other Infra package: run `bun run changeset` from the root, land the change, and merge the generated version PR. `release-package.yml` calls the shared workflow to publish without an npm token. There is no separate npm-trust publisher. Run the workspace setup command with `--apply` to replace trust records for retired workflows.
+Later versions use the same Changesets flow as every other Infra package: run `bun run changeset` from the root and land the change. `release-package.yml` calls the shared workflow to version packages, commit the version updates directly to the default branch, and publish in the same job without an npm token. There is no separate npm-trust publisher. Run the workspace setup command with `--apply` to replace trust records for retired workflows.

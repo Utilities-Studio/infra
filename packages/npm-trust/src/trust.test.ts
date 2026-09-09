@@ -29,13 +29,13 @@ const OPTIONS: SetupOptions = {
 	cwd: '/repo',
 	environment: 'npm-publish',
 	file: 'publish.yml',
-	repository: 'utilities-studio/lena',
+	repository: 'example-org/example-repo',
 	yes: false,
 }
 
 const TARGET: TrustTarget = {
 	type: 'github',
-	repository: 'utilities-studio/lena',
+	repository: 'example-org/example-repo',
 	file: 'publish.yml',
 	environment: 'npm-publish',
 	permissions: ['createPackage'],
@@ -43,14 +43,14 @@ const TARGET: TrustTarget = {
 
 const PACKAGE: PublishablePackage = {
 	dir: '/repo/packages/core',
-	name: '@lena-inc/core',
+	name: '@example/core',
 	relativeDir: 'packages/core',
 }
 
 const EXACT_CONFIGURATION = {
 	type: 'github',
 	id: 'trust-1',
-	repository: 'utilities-studio/lena',
+	repository: 'example-org/example-repo',
 	file: 'publish.yml',
 	environment: 'npm-publish',
 	permissions: ['createPackage'],
@@ -94,10 +94,10 @@ describe('setup options', () => {
 
 describe('npm command arguments', () => {
 	test('keeps scoped package names as one argument', () => {
-		expect(listTrustArguments('@lena-inc/core')).toEqual([
+		expect(listTrustArguments('@example/core')).toEqual([
 			'trust',
 			'list',
-			'@lena-inc/core',
+			'@example/core',
 			'--json',
 			'--registry',
 			'https://registry.npmjs.org',
@@ -105,12 +105,12 @@ describe('npm command arguments', () => {
 	})
 
 	test('creates the requested GitHub trust configuration without a shell', () => {
-		expect(createTrustArguments('@lena-inc/core', TARGET)).toEqual([
+		expect(createTrustArguments('@example/core', TARGET)).toEqual([
 			'trust',
 			'github',
-			'@lena-inc/core',
+			'@example/core',
 			'--repo',
-			'utilities-studio/lena',
+			'example-org/example-repo',
 			'--file',
 			'publish.yml',
 			'--env',
@@ -124,8 +124,8 @@ describe('npm command arguments', () => {
 	})
 
 	test('revokes only the specified package trust ID', () => {
-		expect(revokeTrustArguments('@lena-inc/core', 'trust-1')).toEqual([
-			'trust', 'revoke', '@lena-inc/core', '--id', 'trust-1', '--yes', '--json', '--registry',
+		expect(revokeTrustArguments('@example/core', 'trust-1')).toEqual([
+			'trust', 'revoke', '@example/core', '--id', 'trust-1', '--yes', '--json', '--registry',
 			'https://registry.npmjs.org',
 		])
 	})
@@ -193,7 +193,7 @@ describe('trust planning', () => {
 
 		expect(matchesTrustTarget(reordered, target)).toBe(true)
 		expect(matchesTrustTarget({ ...reordered, environment: undefined }, target)).toBe(false)
-		expect(matchesTrustTarget({ ...reordered, repository: 'Utilities-Studio/lena' }, target)).toBe(false)
+		expect(matchesTrustTarget({ ...reordered, repository: 'Example-Org/example-repo' }, target)).toBe(false)
 		expect(matchesTrustTarget({ ...reordered, permissions: ['createPackage'] }, target)).toBe(false)
 	})
 

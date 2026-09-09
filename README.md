@@ -280,7 +280,7 @@ bunx @utilities-studio/npm-trust github \
   --apply
 ```
 
-The CLI validates the complete batch before writing and skips matching existing records. npm-added staged-publish access is accepted for `--allow-publish`; stage-only requests still reject direct-publish access. With `--apply`, it creates missing configurations and replaces differing records by revoking their IDs and creating the requested configuration. If replacement creation fails, rerun the same command to restore the missing configuration. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
+The CLI validates the complete batch before writing and skips matching existing records. Package checks and updates run in parallel after the initial interactive authentication check, without artificial delays. npm-added staged-publish access is accepted for `--allow-publish`; stage-only requests still reject direct-publish access. `--apply` confirms the batch without another prompt: it creates missing configurations and replaces differing records by revoking their IDs before creating the requested configuration. If replacement creation fails, independent packages finish and the CLI reports pending packages; rerun the same command to restore missing configurations. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
 
 See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the bootstrap boundary and full contract.
 
@@ -288,7 +288,7 @@ See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the boots
 
 ## Workflows
 
-Shared workflows use `workflow_call`. Infra's `release-package.yml` calls `npm-publish.yml` for installation, verification, Changesets version PRs, and OIDC publishing across all seven packages.
+Shared workflows use `workflow_call`. Infra's `release-package.yml` calls `npm-publish.yml` for installation, Changesets versioning, verification, automatic version commits, and OIDC publishing across all seven packages.
 
 ```
   your-repo/.github/workflows/deploy.yml
@@ -350,7 +350,7 @@ into this input.
 
 | Workflow | What it does |
 |---|---|
-| [`npm-publish`](.github/workflows/npm-publish.yml) | Reusable Changesets version PRs, changelogs, tags, and npm publishing through GitHub OIDC |
+| [`npm-publish`](.github/workflows/npm-publish.yml) | Changesets versioning, automatic version commits to the default branch, changelogs, tags, and npm publishing through GitHub OIDC |
 | [`release-package`](.github/workflows/release-package.yml) | Calls npm-publish for every public workspace package, including npm-trust |
 
 ---
@@ -452,14 +452,13 @@ jobs:
   publish:
     permissions:
       contents: write
-      pull-requests: write
       id-token: write
     uses: Utilities-Studio/infra/.github/workflows/npm-publish.yml@<full-commit-sha>
 ```
 
-Pin the reusable workflow to a full commit SHA. This works for a single-package repository or a declared monorepo using Changesets CLI v3. The default branch must match the caller's trigger. The called job uses the caller repository's `npm-publish` environment. Create and protect that environment, restrict it to the default branch, and enable **Settings > Actions > General > Allow GitHub Actions to create and approve pull requests** before the first release.
+Pin the reusable workflow to a full commit SHA. This works for a single-package repository or a declared monorepo using Changesets CLI v3. The default branch must match the caller's trigger. The called job uses the caller repository's `npm-publish` environment. Create and protect that environment, restrict it to the default branch, and allow the release workflow to write version commits to that branch before the first release.
 
-npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. The workflow needs no npm token. GitHub's automatic token creates the version PR and release tags.
+npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. The workflow needs no npm token. GitHub's automatic token pushes version commits and release tags.
 
 The caller provides these root scripts:
 
@@ -471,7 +470,7 @@ The caller provides these root scripts:
 
 Optional workflow inputs are `working_directory`, `bun_version`, `install_command`, `verify_command`, `version_command`, and `publish_command`. Defaults use Bun and the scripts above. Override installation and lockfile handling for npm, pnpm, or Yarn callers. Keep command inputs static and repository-owned. Publish commands must invoke Changesets CLI v3 and preserve its `CHANGESETS_OUTPUT` environment variable so the action can create release tags and GitHub releases.
 
-GitHub's automatic token does not trigger ordinary PR workflows when it opens the version PR. Run required checks manually on that PR if branch protection requires them. Environment reviewers also approve version-PR runs because versioning and publishing share the protected job.
+After `changeset version` and verification, `stefanzweifel/git-auto-commit-action` commits the generated changes directly to the default branch. Publishing runs afterward in the same job, so a failed publish can retry the committed versions. The commit message includes `[skip ci]`; pushes made with GitHub's automatic token also [do not trigger another push workflow](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow). There is no version PR. The commit action uses its standard changed-file handling, so generated build artifacts should be ignored by the caller repository.
 
 ### Releasing Infra packages
 
@@ -488,7 +487,7 @@ For each releasable change:
 bun run changeset
 ```
 
-Select the affected packages and bump levels. Commit the generated changeset with the change. After it reaches `main`, Changesets opens or updates **Version Packages**. Review and merge that PR; the next run publishes unpublished versions and creates package tags and GitHub releases. `workflow_dispatch` retries the same process without inventing another version bump.
+Select the affected packages and bump levels. Commit the generated changeset with the change. After it reaches `main`, the workflow versions packages, verifies the result, commits the version updates to `main`, and publishes unpublished versions with package tags and GitHub releases. `workflow_dispatch` retries the same process without inventing another version bump. A source change without a changeset does not request a new version.
 
 Changesets owns package discovery, semantic versions, changelogs, and internal dependency updates. Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows, automatic patch comparisons, or per-package lockfiles.
 
@@ -536,7 +535,7 @@ Migration verification, 2026-09-09: a fresh frozen-lockfile installation, root t
        |         +--- sync-env ----> Edge function secrets synced
        |
        +--- release-package -------> npm-publish reusable workflow
-                                     Changeset -> version PR -> merge -> OIDC publish
+                                     Changeset -> version -> commit to main -> OIDC publish
        |
        v
   PR comment with deploy preview URL
@@ -598,7 +597,7 @@ infra/
 - [Bun](https://bun.sh) runtime (all packages use `#!/usr/bin/env bun`)
 - npm >=11.15.0 and <13.0.0, npm write access, and account-level 2FA (for npm-trust setup)
 - A protected caller-repository `npm-publish` environment (for reusable OIDC publishing)
-- GitHub Actions permission to create PRs, Changesets CLI v3, and registered npm trusted publishers (for releases)
+- GitHub Actions permission to write version commits to the default branch, Changesets CLI v3, and registered npm trusted publishers (for releases)
 - Cloudflare account + API token (for deploy workflows)
 - Supabase project (for Supabase workflows and stripe-sync pull)
 - Stripe secret key (for stripe-sync)
