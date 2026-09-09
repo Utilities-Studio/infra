@@ -24,12 +24,12 @@ on:
         type: string
         default: "bun run check"
       version_command:
-        description: "Changesets version command, including lockfile updates"
+        description: "Lerna-Lite version command, including lockfile updates, commits, and tags"
         required: false
         type: string
         default: "bun run release:version"
       publish_command:
-        description: "Changesets publish command"
+        description: "Lerna-Lite command to publish package versions missing from npm"
         required: false
         type: string
         default: "bun run release:publish"
@@ -69,6 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-publish
+    permissions:
+      contents: write
+      id-token: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
@@ -118,38 +121,7 @@ jobs:
           set -euo pipefail
           bash --noprofile --norc -e -u -o pipefail -c "$INSTALL_COMMAND"
 
-      - name: Checkout Conventional Commit changeset generator
-        uses: actions/checkout@v7
-        with:
-          repository: pixpilot/changesets-autopilot
-          ref: v1
-          path: .github/npm-release-tools
-          persist-credentials: false
-
-      - name: Install changeset generator
-        working-directory: ${{ github.workspace }}/.github/npm-release-tools
-        run: bun --no-env-file install --ignore-scripts
-
-      - name: Generate changesets from Conventional Commits
-        env:
-          RELEASE_TOOLS: ${{ github.workspace }}/.github/npm-release-tools
-        run: bun --no-env-file x --bun run-func "$(realpath --relative-to="$PWD" "$RELEASE_TOOLS/src/changeset/create-changesets-for-recent-commits.ts")" createChangesetsForRecentCommits
-
-      - name: Select Changesets release mode
-        id: release-mode
-        uses: changesets/action/select-mode@v2
-        with:
-          cwd: ${{ inputs.working_directory }}
-
-      - name: Version packages with Changesets
-        if: steps.release-mode.outputs.mode == 'version'
-        env:
-          VERSION_COMMAND: ${{ inputs.version_command }}
-        shell: bash
-        run: bash --noprofile --norc -e -u -o pipefail -c "$VERSION_COMMAND"
-
       - name: Verify release
-        if: steps.release-mode.outputs.mode != 'none'
         env:
           VERIFY_COMMAND: ${{ inputs.verify_command }}
         shell: bash
@@ -157,23 +129,18 @@ jobs:
           set -euo pipefail
           bash --noprofile --norc -e -u -o pipefail -c "$VERIFY_COMMAND"
 
-      - name: Commit version updates to the default branch
-        if: steps.release-mode.outputs.mode == 'version'
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          branch: ${{ github.event.repository.default_branch }}
-          commit_message: "chore(release): version packages [skip ci]"
-          file_pattern: '. :(exclude).github/npm-release-tools'
-          skip_fetch: true
-          skip_checkout: true
+      - name: Setup release commit identity
+        uses: fregante/setup-git-user@v2
+
+      - name: Version packages with Lerna-Lite
+        env:
+          VERSION_COMMAND: ${{ inputs.version_command }}
+        shell: bash
+        run: bash --noprofile --norc -e -u -o pipefail -c "$VERSION_COMMAND"
 
       - name: Publish versioned packages
-        if: steps.release-mode.outputs.mode != 'none'
-        uses: changesets/action@v2
-        with:
-          cwd: ${{ inputs.working_directory }}
-          version-script: ${{ inputs.version_command }}
-          publish-script: ${{ inputs.publish_command }}
-          push-with-git-cli: true
         env:
+          PUBLISH_COMMAND: ${{ inputs.publish_command }}
           NPM_CONFIG_PROVENANCE: "true"
+        shell: bash
+        run: bash --noprofile --norc -e -u -o pipefail -c "$PUBLISH_COMMAND"

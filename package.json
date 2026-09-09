@@ -9,13 +9,15 @@
 		"lint": "oxlint --type-aware --type-check .",
 		"test": "bun --no-env-file test",
 		"check": "bun --no-env-file run lint && bun --no-env-file run build && bun --no-env-file run test",
-		"changeset": "changeset",
-		"release:version": "changeset version && bun --no-env-file install --lockfile-only --ignore-scripts",
-		"release:publish": "changeset publish"
+		"release:version": "lerna version --yes",
+		"release:publish": "lerna publish from-package --yes"
 	},
 	"devDependencies": {
-		"@changesets/cli": "3.0.2",
+		"@lerna-lite/cli": "5.6.1",
+		"@lerna-lite/publish": "5.6.1",
+		"@lerna-lite/version": "5.6.1",
 		"@types/bun": "1.4.2",
+		"conventional-changelog-conventionalcommits": "10.4.0",
 		"oxlint": "1.82.0",
 		"oxlint-tsgolint": "7.0.2001"
 	}

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 const sharedPath = '.github/workflows/npm-publish.yml'
 const callerPath = '.github/workflows/release-package.yml'
 
-describe('Changesets release workflow', () => {
+describe('Lerna-Lite release workflow', () => {
 	test('protects publishing with the default branch, environment, and repository concurrency', async () => {
 		const workflow = await Bun.file(sharedPath).text()
 
@@ -28,6 +28,7 @@ describe('Changesets release workflow', () => {
 		expect(workflow).toContain('uses: actions/checkout@v7')
 		expect(workflow).toContain('uses: actions/setup-node@v7')
 		expect(workflow).toContain('uses: oven-sh/setup-bun@v2')
+		expect(workflow).not.toMatch(/octo-sts|release-token|create-github-app-token|\n\s+token:/)
 		expect(workflow).toContain('node-version: "24.15.0"')
 		expect(workflow).toContain('npm install --global npm@12.0.2 --ignore-scripts')
 		expect(workflow).toContain('persist-credentials: true')
@@ -36,46 +37,31 @@ describe('Changesets release workflow', () => {
 		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|secrets\.|actions\/cache@/)
 	})
 
-	test('passes the generator path relative to the caller working directory', async () => {
+	test('uses ready-made Lerna-Lite commands without Changesets or a custom generator', async () => {
 		const workflow = await Bun.file(sharedPath).text()
 
-		expect(workflow).toContain('run-func "$(realpath --relative-to="$PWD" "$RELEASE_TOOLS/src/changeset/create-changesets-for-recent-commits.ts")" createChangesetsForRecentCommits')
-		expect(workflow).not.toContain('run-func "$RELEASE_TOOLS/')
+		expect(workflow).not.toMatch(/changesets|run-func|pixpilot|npm-release-tools|git-auto-commit-action/i)
+		expect(workflow).toContain('uses: fregante/setup-git-user@v2')
+		expect(workflow).toContain('PUBLISH_COMMAND: ${{ inputs.publish_command }}')
+		expect(workflow).toContain('bash --noprofile --norc -e -u -o pipefail -c "$PUBLISH_COMMAND"')
 	})
 
-	test('uses Changesets mode selection to guard versioning and commits while allowing publish retries', async () => {
+	test('verifies before version commits and always attempts to publish missing versions after successful versioning', async () => {
 		const workflow = await Bun.file(sharedPath).text()
 		const install = workflow.indexOf('- name: Install dependencies')
-		const selectMode = workflow.indexOf('- name: Select Changesets release mode')
-		const version = workflow.indexOf('- name: Version packages with Changesets')
 		const verify = workflow.indexOf('- name: Verify release')
-		const commit = workflow.indexOf('- name: Commit version updates to the default branch')
+		const identity = workflow.indexOf('- name: Setup release commit identity')
+		const version = workflow.indexOf('- name: Version packages with Lerna-Lite')
 		const release = workflow.indexOf('- name: Publish versioned packages')
 
 		expect(install).toBeGreaterThan(-1)
-		expect(selectMode).toBeGreaterThan(install)
-		expect(version).toBeGreaterThan(selectMode)
-		expect(verify).toBeGreaterThan(version)
-		expect(commit).toBeGreaterThan(verify)
-		expect(release).toBeGreaterThan(commit)
-		expect(workflow.slice(selectMode, version)).toContain('id: release-mode')
-		expect(workflow.slice(selectMode, version)).toContain('uses: changesets/action/select-mode@v2')
-		expect(workflow.slice(selectMode, version)).toContain('cwd: ${{ inputs.working_directory }}')
-		expect(workflow.slice(version, verify)).toContain("if: steps.release-mode.outputs.mode == 'version'")
-		expect(workflow.slice(commit, release)).toContain("if: steps.release-mode.outputs.mode == 'version'")
-		expect(workflow.slice(verify, commit)).toContain("if: steps.release-mode.outputs.mode != 'none'")
-		expect(workflow.slice(release)).toContain("if: steps.release-mode.outputs.mode != 'none'")
+		expect(verify).toBeGreaterThan(install)
+		expect(identity).toBeGreaterThan(verify)
+		expect(version).toBeGreaterThan(identity)
+		expect(release).toBeGreaterThan(version)
+		expect(workflow.slice(verify)).not.toContain('if:')
 		expect(workflow).not.toContain('continue-on-error: true')
-		expect(workflow).toContain('uses: stefanzweifel/git-auto-commit-action@v7')
-		expect(workflow).toContain('branch: ${{ github.event.repository.default_branch }}')
-		expect(workflow).toContain('commit_message: "chore(release): version packages [skip ci]"')
-		expect(workflow).toContain('skip_fetch: true')
-		expect(workflow).toContain('skip_checkout: true')
-		expect(workflow).toContain('push-with-git-cli: true')
-		expect(workflow).toContain('uses: changesets/action@v2')
-		expect(workflow).toContain('cwd: ${{ inputs.working_directory }}')
-		expect(workflow).toContain('version-script: ${{ inputs.version_command }}')
-		expect(workflow).toContain('publish-script: ${{ inputs.publish_command }}')
+		expect(workflow).toContain('working-directory: ${{ inputs.working_directory }}')
 		expect(workflow).toContain('default: "bun run release:version"')
 		expect(workflow).toContain('default: "bun run release:publish"')
 	})
@@ -92,7 +78,7 @@ describe('Changesets release workflow', () => {
 			expect(workflow).toContain(`${variable}: \${{ inputs.${input} }}`)
 			expect(workflow).toContain(`${input} cannot be empty`)
 		}
-		for (const variable of ['INSTALL_COMMAND', 'VERIFY_COMMAND', 'VERSION_COMMAND']) {
+		for (const variable of ['INSTALL_COMMAND', 'VERIFY_COMMAND', 'VERSION_COMMAND', 'PUBLISH_COMMAND']) {
 			expect(workflow).toContain(`bash --noprofile --norc -e -u -o pipefail -c "$${variable}"`)
 		}
 	})
@@ -105,6 +91,8 @@ describe('Changesets release workflow', () => {
 		expect(caller).toContain('workflow_dispatch:')
 		expect(caller).toContain('uses: ./.github/workflows/npm-publish.yml')
 		expect(caller).toContain('contents: write')
+		expect(shared).toContain('      contents: write')
+		expect(shared).toContain('      id-token: write')
 		expect(caller).not.toContain('pull-requests: write')
 		expect(caller).toContain('id-token: write')
 		expect(caller).not.toMatch(/matrix:|detect:|paths:|steps:|runs-on:|publish_command:/)
@@ -114,17 +102,32 @@ describe('Changesets release workflow', () => {
 
 	test('discovers every public package through one workspace and one lockfile', async () => {
 		const root = await Bun.file('package.json').json()
-		const config = await Bun.file('.changeset/config.json').json()
+		const config = await Bun.file('lerna.json').json()
 		const packages = await Array.fromAsync(new Bun.Glob('packages/*/package.json').scan('.'))
 
 		expect(root.private).toBe(true)
 		expect(root.workspaces).toEqual(['packages/*'])
-		expect(root.devDependencies['@changesets/cli']).toBe('3.0.2')
-		expect(root.scripts['release:version']).toBe('changeset version && bun --no-env-file install --lockfile-only --ignore-scripts')
-		expect(root.scripts['release:publish']).toBe('changeset publish')
-		expect(config.access).toBe('public')
-		expect(config.ignore).toEqual([])
-		expect(config.baseBranch).toBe('main')
+		expect(root.devDependencies['@changesets/cli']).toBeUndefined()
+		for (const name of ['@lerna-lite/cli', '@lerna-lite/version', '@lerna-lite/publish']) {
+			expect(root.devDependencies[name]).toBe('5.6.1')
+		}
+		expect(root.devDependencies['conventional-changelog-conventionalcommits']).toBe('10.4.0')
+		expect(root.scripts.changeset).toBeUndefined()
+		expect(root.scripts['release:version']).toBe('lerna version --yes')
+		expect(root.scripts['release:publish']).toBe('lerna publish from-package --yes')
+		expect(config.version).toBe('independent')
+		expect(config.npmClient).toBe('bun')
+		expect(config.npmClientArgs).toEqual(['--no-env-file'])
+		expect(config.command.version).toMatchObject({
+			allowBranch: 'main',
+			conventionalCommits: true,
+			changelogPreset: 'conventionalcommits',
+			syncWorkspaceLock: true,
+			message: 'chore(release): version packages [skip ci]',
+		})
+		expect(config.command.version.ignoreChanges).toEqual([
+			'**/*.md', '**/*.test.*', '**/*.spec.*', '**/__tests__/**', '**/__fixtures__/**',
+		])
 		expect(packages).toHaveLength(7)
 		expect(await Bun.file('bun.lock').exists()).toBe(true)
 		for (const path of packages) {

@@ -30,7 +30,7 @@
 |   Seven npm packages. Seven GitHub Actions workflows.                   |
 |                                                                          |
 |   Sync env vars. Deploy Workers. Deploy Pages. Deploy Supabase.          |
-|   Push Stripe config. Pull to Supabase. Changesets releases.             |
+|   Push Stripe config. Pull to Supabase. Lerna-Lite releases.             |
 |   Configure trusted publishing once. Publish through OIDC.               |
 |                                                                          |
 +--------------------------------------------------------------------------+
@@ -277,7 +277,7 @@ See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the boots
 
 ## Workflows
 
-Shared workflows use `workflow_call`. Infra's `release-package.yml` calls `npm-publish.yml` for installation, Changesets versioning, verification, automatic version commits, and OIDC publishing across all seven packages.
+Shared workflows use `workflow_call`. Infra's `release-package.yml` calls `npm-publish.yml` for installation, verification, Lerna-Lite versioning and version commits, and OIDC publishing across all seven packages.
 
 ```
   your-repo/.github/workflows/deploy.yml
@@ -339,7 +339,7 @@ into this input.
 
 | Workflow | What it does |
 |---|---|
-| [`npm-publish`](.github/workflows/npm-publish.yml) | Changesets versioning, automatic version commits to the default branch, changelogs, tags, and npm publishing through GitHub OIDC |
+| [`npm-publish`](.github/workflows/npm-publish.yml) | Lerna-Lite versioning, automatic version commits to the default branch, changelogs, tags, and npm publishing through GitHub OIDC |
 | [`release-package`](.github/workflows/release-package.yml) | Calls npm-publish for every public workspace package, including npm-trust |
 
 ---
@@ -445,21 +445,25 @@ jobs:
     uses: Utilities-Studio/infra/.github/workflows/npm-publish.yml@<full-commit-sha>
 ```
 
-Pin the reusable workflow to a full commit SHA. This works for a single-package repository or a declared monorepo using Changesets CLI v3. The default branch must match the caller's trigger. The called job uses the caller repository's `npm-publish` environment. Create and protect that environment, restrict it to the default branch, and allow the release workflow to write version commits to that branch before the first release.
+Pin the reusable workflow to a full commit SHA. Callers must configure Lerna-Lite and their workspace in the release working directory. The default branch must match the caller's trigger and Lerna-Lite's `allowBranch` setting. The called job uses the caller repository's `npm-publish` environment. Restrict it to the default branch and leave required reviewers and wait timers disabled for unattended releases.
 
-npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. The workflow needs no npm token. GitHub's automatic token pushes version commits and release tags.
+GitHub writes use the automatic `GITHUB_TOKEN` through checkout's persisted credentials. No GitHub App, token broker, server, PAT, or additional secret is needed. The caller grants `contents: write` for version commits and tags, and `id-token: write` for npm publishing.
+
+**Branch rules still apply.** Direct release commits will fail if the target branch requires pull requests or signed commits. This simple workflow does not bypass those requirements. To use it, an owner must permit direct unsigned commits and tag creation; relaxing those rules also affects other writers. GitHub settings are not changed by this repository.
+
+npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. npm publishing uses GitHub OIDC and needs no npm token.
 
 The caller provides these root scripts:
 
 | Script | Responsibility |
 |---|---|
 | `check` | Typecheck, build publishable artifacts, and run tests |
-| `release:version` | `changeset version`, then update the package manager's lockfile |
-| `release:publish` | `changeset publish` |
+| `release:version` | `lerna version --yes`, including lockfile updates, version commits, and tags |
+| `release:publish` | `lerna publish from-package --yes`, publishing versions missing from npm |
 
-Optional workflow inputs are `working_directory`, `bun_version`, `install_command`, `verify_command`, `version_command`, and `publish_command`. Defaults use Bun and the scripts above. Override installation and lockfile handling for npm, pnpm, or Yarn callers. Keep command inputs static and repository-owned. Publish commands must invoke Changesets CLI v3 and preserve its `CHANGESETS_OUTPUT` environment variable so the action can create release tags and GitHub releases.
+Optional workflow inputs are `working_directory`, `bun_version`, `install_command`, `verify_command`, `version_command`, and `publish_command`. Defaults use Bun and the scripts above. Keep command inputs static and repository-owned. Callers install `@lerna-lite/cli`, `@lerna-lite/version`, `@lerna-lite/publish`, and `conventional-changelog-conventionalcommits`, then configure `lerna.json` for their package manager and release branch.
 
-After `changeset version` and verification, `stefanzweifel/git-auto-commit-action` commits the generated changes directly to the default branch. Publishing runs afterward in the same job, so a failed publish can retry the committed versions. The commit message includes `[skip ci]`; pushes made with GitHub's automatic token also [do not trigger another push workflow](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow). There is no version PR. The commit action uses its standard changed-file handling, so generated build artifacts should be ignored by the caller repository.
+The workflow verifies before Lerna-Lite versions, commits, and tags the changed packages. Publishing runs afterward in the same job. The `from-package` mode checks npm for each current version, allowing retries after partial publishing without requiring new changes. The publish step is not conditional on a version bump. Version commits include `[skip ci]`; pushes made with `GITHUB_TOKEN` do not trigger another push workflow. There is no version PR. Generated build artifacts should be ignored by the caller repository.
 
 ### Releasing Infra packages
 
@@ -470,15 +474,15 @@ bun install --frozen-lockfile --ignore-scripts
 bun run check
 ```
 
-Use Conventional Commit messages for releasable changes: `fix:`, `perf:`, and `revert:` request patches, `feat:` requests minors, and `!` marks a breaking change. `docs:`, `chore:`, and `refactor:` do not request releases.
+Lerna-Lite selects changed packages and applies at least a patch bump, including code changes committed as `refactor:` or `chore:`. `feat:` requests a minor bump; `!` or a `BREAKING CHANGE` footer requests a major bump for stable packages. Documentation and test-only paths are excluded through `ignoreChanges` in `lerna.json`.
 
-After a release commit reaches `main`, CI uses the existing generator from `pixpilot/changesets-autopilot` through the `run-func` CLI to create changeset files automatically. The native Changesets steps then version packages, verify the result, commit version updates to `main`, and publish with package tags and GitHub releases. No manual changeset or version PR is required. `bun run changeset` remains available for explicit release entries.
+After changes reach `main`, CI verifies, runs `release:version`, and runs `release:publish`. Lerna-Lite owns independent versions, changelogs, dependency updates, version commits, and package tags. `syncWorkspaceLock` updates `bun.lock` through Bun with lifecycle scripts and environment-file loading disabled. No generated changeset, upstream source checkout, function runner, or custom release script is used.
 
-Changesets owns package discovery, semantic versions, changelogs, and internal dependency updates. Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows, automatic patch comparisons, or per-package lockfiles.
+Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows or per-package lockfiles. Existing `.changeset/` files are retained for the owner-managed migration but are no longer consumed by the release scripts.
 
 Before enabling this flow:
 
-1. Align source versions with any versions previously published by the old workflow, which bumped versions without committing them. Do not guess or reset versions.
+1. Reconcile source versions and release tags with previously published versions. This migration is owner-managed; the tooling setup does not rewrite versions or create historical tags.
 2. Manually publish the first version of any package that does not yet exist on npm. [npm-trust's bootstrap instructions](packages/npm-trust/README.md#bootstrap-this-package) cover the new package.
 3. Configure every package to trust the common caller. Run npm-trust to replace existing records that have a different repository, workflow, environment, or permissions.
 
@@ -488,11 +492,9 @@ From the Infra root, configure trust using the current source:
 bun --no-env-file packages/npm-trust/src/index.ts --file release-package.yml
 ```
 
-Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See [Changesets automation](https://changesets.dev/guide/automating) for the upstream release model.
+Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See the Lerna-Lite [version](https://github.com/lerna-lite/lerna-lite/tree/main/packages/version) and [publish](https://github.com/lerna-lite/lerna-lite/tree/main/packages/publish) documentation for the upstream release model.
 
 Run `bun --no-env-file run lint` from the root for type-aware Oxlint across all packages, tests, and GitHub scripts. The command enables `--type-check` to report compiler diagnostics alongside lint rules. `bun --no-env-file run check` runs lint, package builds, and tests in order. sync-env uses tsdown to build its ESM and CommonJS exports and generate declarations with TypeScript 7.
-
-Migration verification, 2026-09-09: a fresh frozen-lockfile installation, root type-aware lint, and 15 focused release, package-export, and pure helper tests pass with tsdown 0.23.0 and TypeScript 7.0.2. The package tests rebuild and verify ESM, CommonJS, and both declaration files in the clean installation. Lint reports existing-test `await-thenable` warnings; tsdown marks its TypeScript 7 declaration generator as experimental. The full check gate, environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run. The release gate must pass before publishing.
 
 ---
 
@@ -516,7 +518,7 @@ Migration verification, 2026-09-09: a fresh frozen-lockfile installation, root t
        |         +--- sync-env ----> Edge function secrets synced
        |
        +--- release-package -------> npm-publish reusable workflow
-                                     Changeset -> version -> commit to main -> OIDC publish
+                                     Verify -> Lerna-Lite version/commit/tag -> OIDC publish
        |
        v
   PR comment with deploy preview URL
@@ -531,7 +533,8 @@ infra/
 ├── package.json              Private Bun workspace and release scripts
 ├── bun.lock                  Shared dependency lockfile
 ├── tsconfig.json             Workspace-wide type information for Oxlint
-├── .changeset/               Changesets config and pending release notes
+├── lerna.json                Independent Lerna-Lite versions and release rules
+├── .changeset/               Legacy release entries retained for later migration
 ├── packages/
 │   ├── sync-env/              Sync env vars to Cloudflare + Supabase
 │   │   ├── src/index.ts
@@ -566,7 +569,7 @@ infra/
 │   ├── cloudflare-workers-cleanup.yml Update Workers preview status
 │   ├── supabase-deploy.yml           Migrations + edge functions
 │   ├── release-package.yml           Release every public workspace package
-│   └── npm-publish.yml               Reusable Changesets and OIDC workflow
+│   └── npm-publish.yml               Reusable Lerna-Lite and OIDC workflow
 └── docs/
     └── superpowers/                  Design specs and implementation plans
 ```
@@ -578,7 +581,7 @@ infra/
 - [Bun](https://bun.sh) runtime (all packages use `#!/usr/bin/env bun`)
 - npm >=11.15.0 and <13.0.0, npm write access, and account-level 2FA (for npm-trust setup)
 - A protected caller-repository `npm-publish` environment (for reusable OIDC publishing)
-- GitHub Actions permission to write version commits to the default branch, Changesets CLI v3, and registered npm trusted publishers (for releases)
+- GitHub rules permitting direct release commits and tags, Lerna-Lite, and registered npm trusted publishers (for releases)
 - Cloudflare account + API token (for deploy workflows)
 - Supabase project (for Supabase workflows and stripe-sync pull)
 - Stripe secret key (for stripe-sync)
