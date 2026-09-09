@@ -41,6 +41,13 @@ describe('Lerna-Lite release workflow', () => {
 		const workflow = await Bun.file(sharedPath).text()
 
 		expect(workflow).not.toMatch(/changesets|run-func|pixpilot|npm-release-tools|git-auto-commit-action/i)
+		expect(Array.from(new Bun.Glob('.changeset/**').scanSync({ cwd: '.', dot: true }))).toEqual([])
+		for (const path of [
+			'.github/actions/npm-release-changeset/action.yml',
+			'.github/scripts/npm-release-changeset.ts',
+		]) {
+			expect(await Bun.file(path).exists()).toBe(false)
+		}
 		expect(workflow).toContain('uses: fregante/setup-git-user@v2')
 		expect(workflow).toContain('PUBLISH_COMMAND: ${{ inputs.publish_command }}')
 		expect(workflow).toContain('bash --noprofile --norc -e -u -o pipefail -c "$PUBLISH_COMMAND"')

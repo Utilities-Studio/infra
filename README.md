@@ -476,9 +476,9 @@ bun run check
 
 Lerna-Lite selects changed packages and applies at least a patch bump, including code changes committed as `refactor:` or `chore:`. `feat:` requests a minor bump; `!` or a `BREAKING CHANGE` footer requests a major bump for stable packages. Documentation and test-only paths are excluded through `ignoreChanges` in `lerna.json`.
 
-After changes reach `main`, CI verifies, runs `release:version`, and runs `release:publish`. Lerna-Lite owns independent versions, changelogs, dependency updates, version commits, and package tags. `syncWorkspaceLock` updates `bun.lock` through Bun with lifecycle scripts and environment-file loading disabled. No generated changeset, upstream source checkout, function runner, or custom release script is used.
+After changes reach `main`, CI verifies, runs `release:version`, and runs `release:publish`. Lerna-Lite owns independent versions, changelogs, dependency updates, version commits, and package tags. `syncWorkspaceLock` updates `bun.lock` through Bun with lifecycle scripts and environment-file loading disabled.
 
-Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows or per-package lockfiles. Existing `.changeset/` files are retained for the owner-managed migration but are no longer consumed by the release scripts.
+Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows or per-package lockfiles.
 
 Before enabling this flow:
 
@@ -534,7 +534,6 @@ infra/
 ├── bun.lock                  Shared dependency lockfile
 ├── tsconfig.json             Workspace-wide type information for Oxlint
 ├── lerna.json                Independent Lerna-Lite versions and release rules
-├── .changeset/               Legacy release entries retained for later migration
 ├── packages/
 │   ├── sync-env/              Sync env vars to Cloudflare + Supabase
 │   │   ├── src/index.ts
