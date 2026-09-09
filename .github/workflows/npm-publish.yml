@@ -141,7 +141,7 @@ jobs:
           skip_checkout: true
 
       - name: Publish versioned packages
-        uses: changesets/action@2
+        uses: changesets/action@v2
         with:
           cwd: ${{ inputs.working_directory }}
           version-script: ${{ inputs.version_command }}

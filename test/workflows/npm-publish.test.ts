@@ -19,12 +19,15 @@ describe('Changesets release workflow', () => {
 		expect(workflow).toContain('cancel-in-progress: false')
 	})
 
-	test('uses pinned hosted actions and the npm OIDC toolchain without an npm token', async () => {
+	test('uses version-tagged hosted actions and the npm OIDC toolchain without an npm token', async () => {
 		const workflow = await Bun.file(sharedPath).text()
 
 		expect(workflow).toContain('runs-on: ubuntu-latest')
 		expect(workflow).not.toContain('self-hosted')
-		expect(workflow).not.toMatch(/uses: [^\n]+@v\d/)
+		expect(workflow).not.toMatch(/uses: [^\n]+@[a-f0-9]{40}\b/)
+		expect(workflow).toContain('uses: actions/checkout@v7')
+		expect(workflow).toContain('uses: actions/setup-node@v7')
+		expect(workflow).toContain('uses: oven-sh/setup-bun@v2')
 		expect(workflow).toContain('node-version: "24.15.0"')
 		expect(workflow).toContain('npm install --global npm@12.0.2 --ignore-scripts')
 		expect(workflow).toContain('persist-credentials: true')
@@ -46,13 +49,13 @@ describe('Changesets release workflow', () => {
 		expect(verify).toBeGreaterThan(version)
 		expect(commit).toBeGreaterThan(verify)
 		expect(release).toBeGreaterThan(commit)
-		expect(workflow).toContain('uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0')
+		expect(workflow).toContain('uses: stefanzweifel/git-auto-commit-action@v7')
 		expect(workflow).toContain('branch: ${{ github.event.repository.default_branch }}')
 		expect(workflow).toContain('commit_message: "chore(release): version packages [skip ci]"')
 		expect(workflow).toContain('skip_fetch: true')
 		expect(workflow).toContain('skip_checkout: true')
 		expect(workflow).toContain('push-with-git-cli: true')
-		expect(workflow).toContain('uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2')
+		expect(workflow).toContain('uses: changesets/action@v2')
 		expect(workflow).toContain('cwd: ${{ inputs.working_directory }}')
 		expect(workflow).toContain('version-script: ${{ inputs.version_command }}')
 		expect(workflow).toContain('publish-script: ${{ inputs.publish_command }}')
