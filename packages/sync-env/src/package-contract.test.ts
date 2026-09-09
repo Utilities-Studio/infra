@@ -65,7 +65,7 @@ describe('sync-env package contract', () => {
 		const workflow = await Bun.file(join(repoDir, '.github/workflows/npm-publish.yml')).text()
 		const root = await Bun.file(join(repoDir, 'package.json')).json()
 		const buildIndex = workflow.indexOf('- name: Verify release')
-		const publishIndex = workflow.indexOf('- name: Create release PR or publish packages')
+		const publishIndex = workflow.indexOf('- name: Publish versioned packages')
 
 		expect(root.scripts.check).toContain('run build')
 		expect(root.scripts.build).toContain('--workspaces --if-present build')
