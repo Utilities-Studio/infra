@@ -16,7 +16,7 @@
     },
     "packages/env-encrypt": {
       "name": "@utilities-studio/env-encrypt",
-      "version": "1.0.6",
+      "version": "1.1.0",
       "bin": {
         "env-encrypt": "src/index.ts",
       },
@@ -31,7 +31,7 @@
     },
     "packages/env-local": {
       "name": "@utilities-studio/env-local",
-      "version": "1.0.3",
+      "version": "1.1.0",
       "bin": {
         "env-local": "src/index.ts",
       },
@@ -45,7 +45,7 @@
     },
     "packages/github-env": {
       "name": "@utilities-studio/github-env",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "bin": {
         "github-env": "src/index.ts",
       },
@@ -60,7 +60,7 @@
     },
     "packages/npm-trust": {
       "name": "@utilities-studio/npm-trust",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "bin": {
         "npm-trust": "src/index.ts",
       },
@@ -77,7 +77,7 @@
     },
     "packages/stripe-sync": {
       "name": "@utilities-studio/stripe-sync",
-      "version": "1.0.4",
+      "version": "1.1.0",
       "bin": {
         "stripe-sync": "src/index.ts",
       },
@@ -94,7 +94,7 @@
     },
     "packages/sync-env": {
       "name": "@utilities-studio/sync-env",
-      "version": "1.1.6",
+      "version": "1.2.0",
       "bin": {
         "sync-env": "src/index.ts",
       },
@@ -113,7 +113,7 @@
     },
     "packages/vite-env": {
       "name": "@utilities-studio/vite-env",
-      "version": "1.0.3",
+      "version": "1.1.0",
       "bin": {
         "vite-env": "src/index.ts",
       },

@@ -1,6 +1,6 @@
 {
 	"name": "@utilities-studio/env-local",
-	"version": "1.0.3",
+	"version": "1.1.0",
 	"description": "Generate matching local env overrides from local Supabase instance",
 	"type": "module",
 	"repository": {
