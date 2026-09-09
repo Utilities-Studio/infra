@@ -6,9 +6,9 @@
 	"workspaces": ["packages/*"],
 	"scripts": {
 		"build": "bun --no-env-file run --workspaces --if-present build",
-		"typecheck": "tsc --noEmit",
+		"lint": "oxlint --type-aware --type-check .",
 		"test": "bun --no-env-file test",
-		"check": "bun --no-env-file run typecheck && bun --no-env-file run build && bun --no-env-file run test",
+		"check": "bun --no-env-file run lint && bun --no-env-file run build && bun --no-env-file run test",
 		"changeset": "changeset",
 		"release:version": "changeset version && bun --no-env-file install --lockfile-only --ignore-scripts",
 		"release:publish": "changeset publish"
@@ -16,6 +16,7 @@
 	"devDependencies": {
 		"@changesets/cli": "3.0.2",
 		"@types/bun": "1.4.2",
-		"typescript": "7.0.2"
+		"oxlint": "1.82.0",
+		"oxlint-tsgolint": "7.0.2001"
 	}
 }

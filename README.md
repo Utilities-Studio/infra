@@ -510,7 +510,9 @@ bun --no-env-file packages/npm-trust/src/index.ts github \
 
 Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See [Changesets automation](https://changesets.dev/guide/automating) for the upstream release model.
 
-Migration verification, 2026-09-09: after the dependency updates, frozen installation and 31 focused release, trust, and pure helper tests pass. The root typecheck remains blocked at `packages/stripe-sync/src/index.ts:110`: the prompt result still includes `symbol` after cancellation handling. The release gate must pass before publishing. The earlier build/export checks used sync-env's locally installed TypeScript 6.0.3, not its newly declared 7.0.2; a fresh-install build is still required. Environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run.
+Run `bun --no-env-file run lint` from the root for type-aware Oxlint across all packages, tests, and GitHub scripts. The command enables `--type-check` to report compiler diagnostics alongside lint rules. `bun --no-env-file run check` runs lint, package builds, and tests in order. TypeScript remains a build dependency of sync-env for declaration generation through tsup.
+
+Migration verification, 2026-09-09: the earlier dependency update passed frozen installation and 31 focused release, trust, and pure helper tests. After the Oxlint replacement, root and npm-trust lint checks pass with existing-test `await-thenable` warnings, and 28 focused release, trust, and pure helper tests pass. The release gate must pass before publishing. The earlier build/export checks used sync-env's locally installed TypeScript 6.0.3, not its newly declared 7.0.2; a fresh-install build is still required. The full check gate, environment-file and infrastructure tests, GitHub execution, npm authentication, and publishing were not run for the Oxlint replacement.
 
 ---
 
@@ -548,7 +550,7 @@ Migration verification, 2026-09-09: after the dependency updates, frozen install
 infra/
 ├── package.json              Private Bun workspace and release scripts
 ├── bun.lock                  Shared dependency lockfile
-├── tsconfig.json             Workspace-wide typecheck
+├── tsconfig.json             Workspace-wide type information for Oxlint
 ├── .changeset/               Changesets config and pending release notes
 ├── packages/
 │   ├── sync-env/              Sync env vars to Cloudflare + Supabase

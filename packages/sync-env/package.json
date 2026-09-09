@@ -37,7 +37,6 @@
 	},
 	"devDependencies": {
 		"@types/bun": "^1.4.2",
-		"oxlint-tsgolint": "^7.0.2001",
 		"tsup": "^8.5.1",
 		"typescript": "^7.0.2"
 	}

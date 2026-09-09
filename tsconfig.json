@@ -3,11 +3,12 @@
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"moduleDetection": "force",
 		"strict": true,
 		"skipLibCheck": true,
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
 		"types": ["bun"]
 	},
-	"include": ["packages/*/src/**/*.ts", "test/**/*.ts"]
+	"include": ["packages/*/src/**/*.ts", "test/**/*.ts", ".github/scripts/**/*.ts"]
 }

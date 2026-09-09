@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { multiselect, isCancel } from '@clack/prompts'
+import { multiselect } from '@clack/prompts'
 import { parse } from 'dotenv'
 import { cac } from 'cac'
 import { parse as parseJsonc } from 'jsonc-parser'
@@ -441,7 +441,7 @@ async function promptTargetsAndEnvs(): Promise<Pick<ParsedArgs, 'envs' | 'target
 		initialValues: [...TARGETS],
 		required: true
 	})
-	if (isCancel(targetAnswer)) process.exit(1)
+	if (typeof targetAnswer === 'symbol') process.exit(1)
 
 	const envAnswer = await multiselect<Environment>({
 		message: 'Select environments',
@@ -449,7 +449,7 @@ async function promptTargetsAndEnvs(): Promise<Pick<ParsedArgs, 'envs' | 'target
 		initialValues: [...ENVIRONMENTS],
 		required: true
 	})
-	if (isCancel(envAnswer)) process.exit(1)
+	if (typeof envAnswer === 'symbol') process.exit(1)
 
 	return {
 		envs: envAnswer,

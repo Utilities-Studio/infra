@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { isCancel, select, text } from '@clack/prompts'
+import { select, text } from '@clack/prompts'
 import { cac } from 'cac'
 import Stripe from 'stripe'
 
@@ -106,7 +106,7 @@ async function promptCommand(): Promise<Command> {
 		options: COMMANDS.map((command) => ({ label: command, value: command })),
 		initialValue: 'pull',
 	})
-	if (isCancel(answer)) process.exit(1)
+	if (typeof answer === 'symbol') process.exit(1)
 	return answer
 }
 
@@ -117,7 +117,7 @@ async function promptConfigPath(command: Exclude<Command, 'pull'>): Promise<stri
 		validate: (value) =>
 			value?.trim() ? undefined : 'Config path is required',
 	})
-	if (isCancel(answer)) process.exit(1)
+	if (typeof answer === 'symbol') process.exit(1)
 	return String(answer).trim()
 }
 

@@ -150,7 +150,7 @@ async function main() {
 
 - [ ] **Step 5: Verify no TypeScript errors**
 
-Run: `cd packages/sync-env && bunx tsc --noEmit`
+Run: `cd packages/sync-env && bun --no-env-file x --no-install oxlint --type-aware --type-check src`
 Expected: no errors (the old inline loading code in `main()` is fully replaced)
 
 - [ ] **Step 6: Commit**
@@ -243,7 +243,7 @@ async function syncCloudflare(envVars: Record<string, Record<string, string>>) {
 
 - [ ] **Step 2: Verify no TypeScript errors**
 
-Run: `cd packages/sync-env && bunx tsc --noEmit`
+Run: `cd packages/sync-env && bun --no-env-file x --no-install oxlint --type-aware --type-check src`
 Expected: no errors
 
 - [ ] **Step 3: Commit**
@@ -295,7 +295,7 @@ Note: The rest of the file reads from `process.env` (not from the file directly)
 
 - [ ] **Step 2: Verify no TypeScript errors**
 
-Run: `cd packages/vite-env && bunx tsc --noEmit`
+Run: `cd packages/vite-env && bun --no-env-file x --no-install oxlint --type-aware --type-check src`
 Expected: no errors
 
 - [ ] **Step 3: Commit**

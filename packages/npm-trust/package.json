@@ -18,9 +18,9 @@
 		"src/trust.ts"
 	],
 	"scripts": {
-		"check": "bun run typecheck && bun run test",
-		"test": "bun test",
-		"typecheck": "tsc --noEmit"
+		"check": "bun --no-env-file run lint && bun --no-env-file run test",
+		"test": "bun --no-env-file test",
+		"lint": "oxlint --type-aware --type-check src"
 	},
 	"dependencies": {
 		"@manypkg/get-packages": "3.1.0",
@@ -30,8 +30,7 @@
 		"zod": "4.5.4"
 	},
 	"devDependencies": {
-		"@types/bun": "1.4.2",
-		"typescript": "7.0.2"
+		"@types/bun": "1.4.2"
 	},
 	"publishConfig": {
 		"access": "public"
