@@ -20,14 +20,12 @@ const workflowFileSchema = z
 
 export const setupOptionsSchema = z
 	.strictObject({
-		allowPublish: z.boolean(),
-		allowStagePublish: z.boolean(),
-		apply: z.boolean(),
+		allowPublish: z.boolean().default(true),
+		allowStagePublish: z.boolean().default(false),
 		cwd: z.string().trim().min(1),
 		environment: z.string().trim().min(1).max(255).optional(),
 		file: workflowFileSchema,
 		repository: githubRepositorySchema,
-		yes: z.boolean(),
 	})
 	.superRefine((value, context) => {
 		if (!value.allowPublish && !value.allowStagePublish) {
@@ -35,14 +33,6 @@ export const setupOptionsSchema = z
 				code: 'custom',
 				message: 'Select --allow-publish, --allow-stage-publish, or both',
 				path: ['allowPublish'],
-			})
-		}
-
-		if (value.yes && !value.apply) {
-			context.addIssue({
-				code: 'custom',
-				message: '--yes is valid only with --apply',
-				path: ['yes'],
 			})
 		}
 	})
@@ -187,6 +177,18 @@ async function readPackageManifest(packageDir: string) {
 	}
 
 	return parsed.data
+}
+
+export async function detectGithubRepository(cwd: string): Promise<string> {
+	const git = Bun.which('git', { cwd, PATH: process.env.PATH ?? '' })
+	if (!git) throw new Error('Git is unavailable. Use --repo owner/repository.')
+	const child = Bun.spawn([git, 'remote', 'get-url', 'origin'], {
+		cwd, env: process.env, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore',
+	})
+	const [remote, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited])
+	const repository = exitCode === 0 ? normalizeGitHubRepository(remote.trim()) : null
+	if (!repository) throw new Error('Cannot detect a GitHub repository from origin. Use --repo owner/repository.')
+	return repository
 }
 
 export async function discoverPublishablePackages(

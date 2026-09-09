@@ -9,7 +9,7 @@ import {
 	listPackageTrust,
 } from './npm-client'
 import type { TrustTarget } from './trust'
-import { configureGithub } from './index'
+import { main } from './index'
 
 const ORIGINAL_PATH = process.env.PATH
 const TARGET: TrustTarget = {
@@ -102,6 +102,12 @@ if (output) console.log(output)
 `,
 	)
 	await chmod(executable, 0o755)
+	const git = join(fakeDirectory, 'git')
+	await Bun.write(git, `#!/usr/bin/env -S bun --no-env-file
+if (process.argv.slice(2).join(' ') !== 'remote get-url origin') process.exit(1)
+console.log(process.env.FAKE_GIT_REMOTE ?? 'git@github.com:example-org/example-repo.git')
+`)
+	await chmod(git, 0o755)
 	process.env.PATH = `${fakeDirectory}:${ORIGINAL_PATH ?? ''}`
 })
 
@@ -118,6 +124,7 @@ afterEach(async () => {
 	delete process.env.FAKE_NPM_FAIL_PACKAGE
 	delete process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE
 	delete process.env.FAKE_NPM_REQUIRE_PARALLEL
+	delete process.env.FAKE_GIT_REMOTE
 	await rm(fakeDirectory, { force: true, recursive: true })
 })
 
@@ -157,7 +164,8 @@ async function fakeState(): Promise<Record<string, unknown[]>> {
 	return Object.fromEntries(entries)
 }
 
-async function runCli(args: string[] = [], target: TrustTarget = TARGET) {
+async function runCli(args: string[] = [], target?: TrustTarget) {
+	const cwd = process.cwd()
 	const stdinTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
 	const stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
 	const ci = process.env.CI
@@ -169,16 +177,17 @@ async function runCli(args: string[] = [], target: TrustTarget = TARGET) {
 	const messages: string[] = []
 	const log = spyOn(console, 'log').mockImplementation((...values) => { messages.push(values.join(' ')) })
 	try {
-		await configureGithub({
-			cwd: fakeDirectory, repo: target.repository, file: target.file, env: target.environment,
-			allowPublish: target.permissions.includes('createPackage'),
-			allowStagePublish: target.permissions.includes('createStagedPackage'),
-			apply: args.includes('--apply'), yes: args.includes('--yes'),
-		})
+		process.chdir(fakeDirectory)
+		await main(['bun', 'npm-trust', ...args, ...(target ? [
+			'--repo', target.repository, '--file', target.file, '--env', target.environment ?? '',
+			...(target.permissions.includes('createPackage') ? ['--allow-publish'] : []),
+			...(target.permissions.includes('createStagedPackage') ? ['--allow-stage-publish'] : []),
+		] : [])])
 		return { stdout: messages.join('\n'), stderr: '', exitCode: 0 }
 	} catch (error) {
 		return { stdout: messages.join('\n'), stderr: String(error), exitCode: 1 }
 	} finally {
+		process.chdir(cwd)
 		log.mockRestore()
 		if (stdinTty) Object.defineProperty(process.stdin, 'isTTY', stdinTty)
 		else Reflect.deleteProperty(process.stdin, 'isTTY')
@@ -199,7 +208,7 @@ describe.serial('npm trust CLI replacement', () => {
 	test.each(['list', 'github'])('runs %s for different packages concurrently and applies without another prompt', async (action) => {
 		await prepareCli({})
 		process.env.FAKE_NPM_REQUIRE_PARALLEL = action
-		const result = await runCli(['--apply'])
+		const result = await runCli()
 		expect(result.exitCode).toBe(0)
 		expect(result.stdout).toContain('Configured 3 packages.')
 		expect(result.stdout).not.toContain('[y/N]')
@@ -219,9 +228,9 @@ describe.serial('npm trust CLI replacement', () => {
 		await prepareCli(state, target, packageNames)
 		process.env.FAKE_NPM_VERSION = '11.16.0'
 
-		const applied = await runCli(['--apply', '--yes'], target)
+		const applied = await runCli([], target)
 		expect(applied.exitCode).toBe(0)
-		expect(applied.stdout).toContain('Configured 6 packages.')
+		expect(applied.stdout).toContain('Configured 7 packages.')
 		expect(applied.stdout).not.toContain('confirmed after retry')
 		const mutations = (await npmCommands()).filter(args => ['revoke', 'github'].includes(args[1]))
 		expect(mutations.some(args => args[2] === '@utilities-studio/env-encrypt')).toBe(false)
@@ -230,16 +239,16 @@ describe.serial('npm trust CLI replacement', () => {
 		const current = await fakeState()
 		for (const name of packageNames) expect(current[name]).toEqual([configured])
 
-		const rerun = await runCli(['--apply', '--yes'], target)
+		const rerun = await runCli([], target)
 		expect(rerun.exitCode).toBe(0)
-		expect(rerun.stdout).toContain('All packages already have the requested trust configuration.')
+		expect(rerun.stdout).toContain('Configured 7 packages.')
 		expect((await npmCommands()).filter(args => ['revoke', 'github'].includes(args[1]))).toEqual(mutations)
 	})
 
 	test('confirms a saved record with npm-added staging after creation output cannot be parsed', async () => {
 		await prepareCli({})
 		process.env.FAKE_NPM_MALFORMED_CREATE_PACKAGE = '@example/core'
-		const result = await runCli(['--apply', '--yes'])
+		const result = await runCli()
 		expect(result.exitCode).toBe(0)
 		expect(result.stdout).toContain('@example/core (confirmed after retry)')
 		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@example/core')).toHaveLength(1)
@@ -248,7 +257,7 @@ describe.serial('npm trust CLI replacement', () => {
 	test('replaces direct publishing when only staged publishing is requested', async () => {
 		const target: TrustTarget = { ...TARGET, permissions: ['createStagedPackage'] }
 		await prepareCli({ '@example/core': [JSON.parse(trustJson())] }, target)
-		const result = await runCli(['--apply', '--yes'], target)
+		const result = await runCli([], target)
 		expect(result.exitCode).toBe(0)
 		expect((await npmCommands()).some(args => args[1] === 'revoke' && args[2] === '@example/core')).toBe(true)
 		const state = await fakeState()
@@ -257,23 +266,23 @@ describe.serial('npm trust CLI replacement', () => {
 		}
 	})
 
-	test('previews replacements without changing trust', async () => {
+	test('bare invocation detects origin and replaces differing trust immediately', async () => {
 		const state = { '@example/core': [JSON.parse(trustJson({ environment: undefined, permissions: ['createPackage', 'createStagedPackage'] }))] }
 		await prepareCli(state)
 		const result = await runCli()
 		expect(result).toMatchObject({ exitCode: 0 })
-		expect(result.stdout).toContain('replace')
-		expect(result.stdout).toContain('Plan only')
-		expect(await fakeState()).toEqual(state)
-		expect((await npmCommands()).some(args => ['revoke', 'github'].includes(args[1]))).toBe(false)
+		expect(result.stdout).toContain('example-org/example-repo, publish.yml, environment=npm-publish, permissions=createPackage')
+		expect(result.stdout).not.toContain('Plan only')
+		expect((await fakeState())['@example/core']).toEqual([JSON.parse(trustJson())])
+		expect((await npmCommands()).some(args => args[1] === 'revoke' && args[2] === '@example/core')).toBe(true)
 	})
 
-	test('preflights all packages before replacing, skips exact records, and creates missing records', async () => {
+	test('checks each package before replacing, skips exact records, and creates missing records', async () => {
 		await prepareCli({
 			'@example/core': [JSON.parse(trustJson({ id: 'old-1', environment: undefined })), { id: 'old-2', type: 'gitlab' }],
 			'@example/extra': [JSON.parse(trustJson())],
 		})
-		const result = await runCli(['--apply', '--yes'])
+		const result = await runCli()
 		expect(result.exitCode).toBe(0)
 		expect(result.stdout).not.toContain('confirmed after retry')
 		const commands = await npmCommands()
@@ -283,21 +292,53 @@ describe.serial('npm trust CLI replacement', () => {
 		expect(core.slice(0, 2).map(args => args[args.indexOf('--id') + 1])).toEqual(['old-1', 'old-2'])
 		expect(mutations.filter(args => args[2] === '@example/missing').map(args => args[1])).toEqual(['github'])
 		expect(mutations.some(args => args[2] === '@example/extra')).toBe(false)
-		const preflight = commands.slice(0, commands.indexOf(mutations[0])).filter(args => args[1] === 'list').map(args => args[2])
-		expect(new Set(preflight)).toEqual(new Set(['@example/core', '@example/extra', '@example/missing']))
+		for (const mutation of mutations) {
+			expect(commands.slice(0, commands.indexOf(mutation)).some(args => args[1] === 'list' && args[2] === mutation[2])).toBe(true)
+		}
 		const state = await fakeState()
 		for (const records of Object.values(state)) expect(records).toEqual([JSON.parse(trustJson())])
 	})
 
-	test('fails preflight without mutations when a replacement record has no ID', async () => {
+	test('continues other packages when a replacement record has no ID', async () => {
 		await prepareCli({
 			'@example/core': [JSON.parse(trustJson({ file: 'old.yml' }))],
 			'@example/extra': [JSON.parse(trustJson({ id: undefined, file: 'old.yml' }))],
 		})
-		const result = await runCli(['--apply', '--yes'])
+		const result = await runCli()
 		expect(result.exitCode).toBe(1)
 		expect(result.stderr).toContain('cannot replace a trust record without an ID')
-		expect((await npmCommands()).some(args => ['revoke', 'github'].includes(args[1]))).toBe(false)
+		expect(result.stderr).toContain('Completed: @example/core, @example/missing')
+		expect(result.stderr).toContain('Pending: @example/extra')
+		expect((await fakeState())['@example/core']).toEqual([JSON.parse(trustJson())])
+		expect((await fakeState())['@example/missing']).toEqual([JSON.parse(trustJson())])
+	})
+
+	test.each(['@example/core', '@example/extra'])('continues all other packages when npm access fails for %s', async (name) => {
+		await prepareCli({})
+		process.env.FAKE_NPM_FAIL_ACTION = 'list'
+		process.env.FAKE_NPM_FAIL_PACKAGE = name
+		const result = await runCli()
+		expect(result.exitCode).toBe(1)
+		expect(result.stderr).toContain(`Pending: ${name}`)
+		const state = await fakeState()
+		for (const other of ['@example/core', '@example/extra', '@example/missing'].filter(value => value !== name)) {
+			expect(state[other]).toEqual([JSON.parse(trustJson())])
+		}
+	})
+
+	test('keeps optional github and repository overrides and rejects removed confirmation flags', async () => {
+		await prepareCli({})
+		process.env.FAKE_GIT_REMOTE = 'https://gitlab.com/unrelated/project.git'
+		expect((await runCli(['github'], TARGET)).exitCode).toBe(0)
+		expect((await runCli(['--apply'])).stderr).toContain('Unknown option')
+		expect((await runCli(['--yes'])).stderr).toContain('Unknown option')
+	})
+
+	test('rejects an unrelated remote before contacting npm', async () => {
+		await prepareCli({})
+		process.env.FAKE_GIT_REMOTE = 'https://gitlab.com/unrelated/project.git'
+		expect((await runCli()).stderr).toContain('Cannot detect a GitHub repository from origin')
+		expect(await Bun.file(join(fakeDirectory, 'commands.jsonl')).exists()).toBe(false)
 	})
 
 	test('stops the failed package after revoke failure and finishes independent packages', async () => {
@@ -305,7 +346,7 @@ describe.serial('npm trust CLI replacement', () => {
 		await prepareCli(state)
 		process.env.FAKE_NPM_FAIL_ACTION = 'revoke'
 		process.env.FAKE_NPM_FAIL_PACKAGE = '@example/core'
-		const result = await runCli(['--apply', '--yes'])
+		const result = await runCli()
 		expect(result.exitCode).toBe(1)
 		expect((await fakeState())['@example/core']).toEqual(state['@example/core'])
 		expect((await npmCommands()).some(args => args[1] === 'github' && args[2] === '@example/core')).toBe(false)
@@ -317,14 +358,14 @@ describe.serial('npm trust CLI replacement', () => {
 		await prepareCli({ '@example/extra': [JSON.parse(trustJson({ file: 'old.yml' }))] })
 		process.env.FAKE_NPM_FAIL_ACTION = 'github'
 		process.env.FAKE_NPM_FAIL_PACKAGE = '@example/extra'
-		const failed = await runCli(['--apply', '--yes'])
+		const failed = await runCli()
 		expect(failed.exitCode).toBe(1)
 		expect(failed.stderr).toContain('Completed: @example/core, @example/missing')
 		expect(failed.stderr).toContain('Pending: @example/extra')
 		expect((await fakeState())['@example/extra']).toEqual([])
 		delete process.env.FAKE_NPM_FAIL_ACTION
 		delete process.env.FAKE_NPM_FAIL_PACKAGE
-		const resumed = await runCli(['--apply', '--yes'])
+		const resumed = await runCli()
 		expect(resumed.exitCode).toBe(0)
 		expect((await npmCommands()).filter(args => args[1] === 'github' && args[2] === '@example/core')).toHaveLength(1)
 	})

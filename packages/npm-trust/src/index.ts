@@ -12,11 +12,12 @@ import {
 } from './npm-client'
 import {
 	createTrustTarget,
+	detectGithubRepository,
 	discoverPublishablePackages,
 	matchesTrustTarget,
 	planPackageTrust,
 	setupOptionsSchema,
-	type PackageTrustPlan,
+	type PublishablePackage,
 	type SetupOptions,
 	type TrustConfiguration,
 } from './trust'
@@ -42,89 +43,47 @@ function isInteractive(): boolean {
 	)
 }
 
-function trustSummary(configuration: TrustConfiguration): string {
-	if (configuration.type !== 'github') return `provider=${configuration.provider}`
-	return [
-		`repo=${configuration.repository}`,
-		`file=${configuration.file}`,
-		`env=${configuration.environment ?? 'none'}`,
-		`permissions=${configuration.permissions.join(',')}`,
-	].join(' ')
-}
-
-function printPlan(plans: PackageTrustPlan[]): void {
-	console.log('\nTrust plan:')
-	for (const plan of plans) {
-		if (plan.action === 'create') {
-			console.log(`  ${colors.yellow('create')}     ${plan.package.name}`)
-			continue
-		}
-		if (plan.action === 'replace') {
-			console.log(`  ${colors.yellow('replace')}    ${plan.package.name}`)
-			for (const configuration of plan.configurations) {
-				console.log(`             ${trustSummary(configuration)}`)
-			}
-			continue
-		}
-
-		console.log(`  ${colors.green('unchanged')}  ${plan.package.name}`)
-	}
-}
-
-function parseSetupOptions(raw: Record<string, unknown>): SetupOptions {
+async function parseSetupOptions(raw: Record<string, unknown>): Promise<SetupOptions> {
+	const cwd = typeof raw.cwd === 'string' ? raw.cwd : process.cwd()
 	return setupOptionsSchema.parse({
-		allowPublish: Boolean(raw.allowPublish),
+		allowPublish: raw.allowPublish === undefined ? !raw.allowStagePublish : Boolean(raw.allowPublish),
 		allowStagePublish: Boolean(raw.allowStagePublish),
-		apply: Boolean(raw.apply),
-		cwd: typeof raw.cwd === 'string' ? raw.cwd : process.cwd(),
-		environment: typeof raw.env === 'string' ? raw.env : undefined,
-		file: raw.file,
-		repository: raw.repo,
-		yes: Boolean(raw.yes),
+		cwd,
+		environment: typeof raw.env === 'string' ? raw.env || undefined : 'npm-publish',
+		file: raw.file ?? 'publish.yml',
+		repository: raw.repo ?? await detectGithubRepository(cwd),
 	})
 }
 
-async function preflight(options: SetupOptions) {
+async function prepare(options: SetupOptions) {
 	const discovered = await discoverPublishablePackages(options.cwd, options.repository, options.file)
 	const target = createTrustTarget(options)
 
-	console.log(`Found ${discovered.packages.length} publishable package${discovered.packages.length === 1 ? '' : 's'}.`)
-	console.log(`Repository: ${target.repository}`)
-	console.log(`Workflow: ${target.file}`)
-	console.log(`Environment: ${target.environment ?? 'none'}`)
-	console.log(`Requested permissions: ${target.permissions.join(', ')}`)
-	if (options.allowPublish && !options.allowStagePublish) {
-		console.log('npm also grants staged publishing to new trusted publishers.')
+	console.log(`Configuring ${discovered.packages.length} packages: ${target.repository}, ${target.file}, environment=${target.environment ?? 'none'}, permissions=${target.permissions.join(',')}.`)
+	await ensureSupportedNpm(discovered.rootDir)
+	console.log('If npm requests 2FA, choose the five-minute skip for this batch.')
+	try {
+		await unlockNpmTrust(discovered.packages[0].name, discovered.rootDir)
+	} catch {
+		console.log('Initial npm access check failed; continuing with each package independently.')
 	}
 
-	const npmVersion = await ensureSupportedNpm(discovered.rootDir)
-	console.log(`npm: ${npmVersion}`)
-
-	console.log('\nThe next npm command may request 2FA.')
-	console.log('When npm offers it, select the five-minute 2FA skip for this batch.')
-	await unlockNpmTrust(discovered.packages[0].name, discovered.rootDir)
-
-	const results = await Promise.allSettled(discovered.packages.map(async (package_) => {
-		const configurations = await listPackageTrust(package_.name, discovered.rootDir)
-		return planPackageTrust(package_, configurations, target)
-	}))
-	const plans = results.map((result) => {
-		if (result.status === 'rejected') throw result.reason
-		return result.value
-	})
-
-	return { plans, rootDir: discovered.rootDir, target }
+	return { ...discovered, target }
 }
 
-async function applyPlans(
-	plans: PackageTrustPlan[],
+async function applyPackages(
+	packages: PublishablePackage[],
 	target: ReturnType<typeof createTrustTarget>,
 	rootDir: string,
 ): Promise<void> {
-	const pending = plans.filter((plan) => plan.action !== 'unchanged')
-	const outcomes = await Promise.allSettled(pending.map(async (plan) => {
-		const package_ = plan.package
+	const outcomes = await Promise.allSettled(packages.map(async (package_) => {
 		try {
+			const configurations = await listPackageTrust(package_.name, rootDir)
+			const plan = planPackageTrust(package_, configurations, target)
+			if (plan.action === 'unchanged') {
+				console.log(`  ${colors.green('unchanged')}  ${package_.name}`)
+				return
+			}
 			if (plan.action === 'replace') {
 				for (const configuration of plan.configurations) {
 					await revokePackageTrust(package_.name, configuration.id, rootDir)
@@ -150,11 +109,11 @@ async function applyPlans(
 	const remaining: string[] = []
 	const failures: string[] = []
 	for (const [index, outcome] of outcomes.entries()) {
-		const name = pending[index].package.name
+		const name = packages[index].name
 		if (outcome.status === 'fulfilled') completed.push(name)
 		else {
 			remaining.push(name)
-			failures.push(`${name}: ${errorMessage(outcome.reason)}`)
+			failures.push(errorMessage(outcome.reason))
 		}
 	}
 	if (failures.length) {
@@ -165,32 +124,17 @@ async function applyPlans(
 			'Rerun the same command after resolving the npm error; completed packages will be skipped.',
 		].join('\n'))
 	}
+	console.log(`\nConfigured ${completed.length} package${completed.length === 1 ? '' : 's'}.`)
 }
 
 export async function configureGithub(raw: Record<string, unknown>): Promise<void> {
-	const options = parseSetupOptions(raw)
-
 	if (!isInteractive()) {
 		throw new Error('npm trust setup requires an interactive terminal and cannot run in CI.')
 	}
 
-	const { plans, rootDir, target } = await preflight(options)
-	printPlan(plans)
-
-	const changeCount = plans.filter((plan) => plan.action !== 'unchanged').length
-	if (changeCount === 0) {
-		console.log('\nAll packages already have the requested trust configuration.')
-		return
-	}
-
-	if (!options.apply) {
-		console.log(`\nPlan only. Rerun with --apply to configure ${changeCount} package${changeCount === 1 ? '' : 's'}.`)
-		return
-	}
-
-	console.log('\nApplying npm trust configuration:')
-	await applyPlans(plans, target, rootDir)
-	console.log(`\nConfigured ${changeCount} package${changeCount === 1 ? '' : 's'}.`)
+	const options = await parseSetupOptions(raw)
+	const { packages, rootDir, target } = await prepare(options)
+	await applyPackages(packages, target, rootDir)
 }
 
 async function readVersion(): Promise<string> {
@@ -198,32 +142,29 @@ async function readVersion(): Promise<string> {
 	return packageVersionSchema.parse(value).version
 }
 
-async function main(): Promise<void> {
+export async function main(argv: string[] = process.argv): Promise<void> {
 	const version = await readVersion()
 	const cli = cac('npm-trust')
 	let task: Promise<void> | undefined
 
 	cli
-		.command('github', 'Configure GitHub Actions as npm trusted publishers')
-		.option('--repo <owner/repository>', 'GitHub caller repository')
-		.option('--file <workflow.yml>', 'Caller workflow filename')
-		.option('--env <environment>', 'Required GitHub environment')
+		.command('[provider]', 'Configure GitHub Actions as npm trusted publishers')
+		.option('--repo <owner/repository>', 'GitHub caller repository (default: origin remote)')
+		.option('--file <workflow.yml>', 'Caller workflow filename (default: publish.yml)')
+		.option('--env <environment>', 'GitHub environment (default: npm-publish; empty for none)')
 		.option('--cwd <path>', 'Repository path (default: current directory)')
-		.option('--allow-publish', 'Allow immediate package publication')
+		.option('--allow-publish', 'Allow immediate publication (default unless stage-only is requested)')
 		.option('--allow-stage-publish', 'Allow staged package publication')
-		.option('--apply', 'Create missing and replace differing trust configurations after preflight')
-		.option('-y, --yes', 'Accepted for compatibility; --apply already confirms changes')
-		.example(
-			'npm-trust github --repo utilities-studio/lena --file publish.yml --env npm-publish --allow-publish --apply',
-		)
-		.action((options: Record<string, unknown>) => {
+		.example('npm-trust')
+		.action((provider: string | undefined, options: Record<string, unknown>) => {
+			if (provider && provider !== 'github') throw new Error('Only GitHub trusted publishers are supported.')
 			task = configureGithub(options)
 			return task
 		})
 
 	cli.version(version)
 	cli.help()
-	const parsed = cli.parse()
+	const parsed = cli.parse(argv)
 
 	if (!task && !parsed.options.help && !parsed.options.version) {
 		cli.outputHelp()

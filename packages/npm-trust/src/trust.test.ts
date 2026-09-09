@@ -25,12 +25,10 @@ const temporaryDirectories: string[] = []
 const OPTIONS: SetupOptions = {
 	allowPublish: true,
 	allowStagePublish: false,
-	apply: false,
 	cwd: '/repo',
 	environment: 'npm-publish',
 	file: 'publish.yml',
 	repository: 'example-org/example-repo',
-	yes: false,
 }
 
 const TARGET: TrustTarget = {
@@ -73,7 +71,7 @@ async function writeJson(path: string, value: unknown): Promise<void> {
 }
 
 describe('setup options', () => {
-	test('requires an explicit publishing permission', () => {
+	test('rejects explicitly disabling every publishing permission', () => {
 		const parsed = setupOptionsSchema.safeParse({
 			...OPTIONS,
 			allowPublish: false,
@@ -82,7 +80,7 @@ describe('setup options', () => {
 		expect(parsed.success).toBe(false)
 	})
 
-	test('rejects workflow paths and confirmation without apply', () => {
+	test('rejects workflow paths and removed confirmation flags', () => {
 		expect(setupOptionsSchema.safeParse({ ...OPTIONS, file: 'nested/publish.yml' }).success).toBe(false)
 		expect(setupOptionsSchema.safeParse({ ...OPTIONS, yes: true }).success).toBe(false)
 	})

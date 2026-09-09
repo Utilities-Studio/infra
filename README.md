@@ -264,23 +264,12 @@ Requires a running local Supabase instance (`bunx supabase start`).
 Configure npm trusted publishing for every non-private publishable package in a normal repository or declared monorepo.
 
 ```bash
-# Authenticated read-only preflight and plan
-bunx @utilities-studio/npm-trust github \
-  --repo utilities-studio/lena \
-  --file publish.yml \
-  --env npm-publish \
-  --allow-publish
-
-# Create missing configurations and replace differing records
-bunx @utilities-studio/npm-trust github \
-  --repo utilities-studio/lena \
-  --file publish.yml \
-  --env npm-publish \
-  --allow-publish \
-  --apply
+bunx @utilities-studio/npm-trust@latest
 ```
 
-The CLI validates the complete batch before writing and skips matching existing records. Package checks and updates run in parallel after the initial interactive authentication check, without artificial delays. npm-added staged-publish access is accepted for `--allow-publish`; stage-only requests still reject direct-publish access. `--apply` confirms the batch without another prompt: it creates missing configurations and replaces differing records by revoking their IDs before creating the requested configuration. If replacement creation fails, independent packages finish and the CLI reports pending packages; rerun the same command to restore missing configurations. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. GitHub Actions publishing uses OIDC afterward and needs no npm token.
+Run from the target checkout. The CLI detects the GitHub repository from `origin` and defaults to `publish.yml`, environment `npm-publish`, and direct publishing. Optional overrides are `--repo`, `--file`, `--env`, `--cwd`, `--allow-publish`, and `--allow-stage-publish`. It always applies, with no dry run or wrapper confirmation.
+
+Package trust checks and updates run independently in parallel after the initial npm authentication check. Matching records are skipped; differing records are revoked by ID and replaced. A package access, validation, revocation, or creation failure does not stop the other packages. Failures are reported after the batch, and reruns skip completed packages. npm-added staging access is accepted for direct publishing; stage-only requests reject direct publishing. Initial setup requires existing npm packages, an authenticated maintainer with write access, account-level 2FA, and npm >=11.15.0 and <13.0.0. CI publishing uses OIDC afterward.
 
 See [`packages/npm-trust/README.md`](packages/npm-trust/README.md) for the bootstrap boundary and full contract.
 
@@ -481,13 +470,9 @@ bun install --frozen-lockfile --ignore-scripts
 bun run check
 ```
 
-For each releasable change:
+Use Conventional Commit messages for releasable changes: `fix:`, `perf:`, and `revert:` request patches, `feat:` requests minors, and `!` marks a breaking change. `docs:`, `chore:`, and `refactor:` do not request releases.
 
-```bash
-bun run changeset
-```
-
-Select the affected packages and bump levels. Commit the generated changeset with the change. After it reaches `main`, the workflow versions packages, verifies the result, commits the version updates to `main`, and publishes unpublished versions with package tags and GitHub releases. `workflow_dispatch` retries the same process without inventing another version bump. A source change without a changeset does not request a new version.
+After a release commit reaches `main`, CI uses the existing generator from `pixpilot/changesets-autopilot` through the `run-func` CLI to create changeset files automatically. The native Changesets steps then version packages, verify the result, commit version updates to `main`, and publish with package tags and GitHub releases. No manual changeset or version PR is required. `bun run changeset` remains available for explicit release entries.
 
 Changesets owns package discovery, semantic versions, changelogs, and internal dependency updates. Adding a public package under `packages/*` requires no workflow edit. Public packages need `publishConfig.access: "public"` and correct repository metadata. Do not add package-specific release workflows, automatic patch comparisons, or per-package lockfiles.
 
@@ -495,16 +480,12 @@ Before enabling this flow:
 
 1. Align source versions with any versions previously published by the old workflow, which bumped versions without committing them. Do not guess or reset versions.
 2. Manually publish the first version of any package that does not yet exist on npm. [npm-trust's bootstrap instructions](packages/npm-trust/README.md#bootstrap-this-package) cover the new package.
-3. Configure every package to trust the common caller. Run npm-trust with `--apply` to replace existing records that have a different repository, workflow, environment, or permissions.
+3. Configure every package to trust the common caller. Run npm-trust to replace existing records that have a different repository, workflow, environment, or permissions.
 
-From the Infra root, preview the authenticated trust plan, then repeat with `--apply` after reviewing it:
+From the Infra root, configure trust using the current source:
 
 ```bash
-bun --no-env-file packages/npm-trust/src/index.ts github \
-  --repo Utilities-Studio/infra \
-  --file release-package.yml \
-  --env npm-publish \
-  --allow-publish
+bun --no-env-file packages/npm-trust/src/index.ts --file release-package.yml
 ```
 
 Never use a successful local check or dry run as evidence that npm OIDC publishing works. A real owner-authorized publication is required. See [Changesets automation](https://changesets.dev/guide/automating) for the upstream release model.

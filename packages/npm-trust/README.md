@@ -6,43 +6,34 @@ The CLI supports normal repositories and declared Bun, npm, pnpm, Yarn, Lerna, o
 
 ## Use
 
-Run once without `--apply` to validate authenticated access to every package and review the plan:
+Run from the repository to configure every publishable package immediately:
 
 ```bash
-bunx @utilities-studio/npm-trust github \
-  --repo utilities-studio/lena \
-  --file publish.yml \
-  --env npm-publish \
-  --allow-publish
+bunx @utilities-studio/npm-trust@latest
 ```
 
-Create missing configurations and replace differing configurations:
+The repository is detected from the checkout's `origin` remote. Defaults are `publish.yml`, environment `npm-publish`, and direct publishing. Every option is an override:
 
 ```bash
-bunx @utilities-studio/npm-trust github \
-  --repo utilities-studio/lena \
-  --file publish.yml \
-  --env npm-publish \
-  --allow-publish \
-  --apply
+bunx @utilities-studio/npm-trust@latest \
+  --repo example-org/example-repo \
+  --file release-package.yml \
+  --env npm-publish
 ```
 
-`--apply` confirms the changes without another prompt. `--yes` remains accepted for compatibility. Native npm authentication and 2FA remain interactive.
+The optional `github` subcommand remains supported. There is no dry run, `--apply`, `--yes`, or wrapper confirmation. Native npm authentication and 2FA remain interactive. Pass `--env ''` for a publisher without a GitHub environment.
 
 For staged publishing without direct publishing, use only `--allow-stage-publish`. npm automatically allows staged publishing on new trust records, including those created with `--allow-publish`. The CLI accepts this npm-added permission without replacing a matching publisher. See [npm's allowed-actions contract](https://docs.npmjs.com/trusted-publishers/#for-github-actions).
 
 ## Guarantees
 
-The command completes in two phases:
+After validating local configuration and attempting the initial npm authentication check, each package independently reads its existing trust and applies the requested target. Packages run in parallel without artificial delays. An access, record-validation, revocation, or creation failure for one package does not prevent other packages from completing.
 
-1. It validates the repository, workflow, package metadata, registry, npm version, authentication, write access, and every existing trust record.
-2. With `--apply`, it creates missing records and replaces differing records in parallel across packages, without artificial delays. Each package's old records are revoked before its replacement is created.
-
-No trust record is changed unless every package passes preflight. Existing records with the requested repository, workflow, environment, and permissions are skipped, including npm-added staging access for a direct-publish request. Stage-only requests never accept direct-publish access. Differing records appear as `replace` in the plan. With `--apply`, the CLI revokes those records by ID and creates the requested configuration. Replacement records without IDs stop preflight before any writes.
+Matching records are skipped, including npm-added staging access for a direct-publish request. Stage-only requests never accept direct-publish access. Differing records are revoked by ID before their replacement is created. If npm omits a required record ID or rejects a request, that package is reported as pending after all packages finish. The CLI exits unsuccessfully when any packages remain pending.
 
 Replacement is not atomic: if creation fails after revocation, the package can temporarily have no trusted publisher. Independent packages finish before the CLI reports completed and pending packages. Rerun the same command to create missing configurations; completed packages are skipped.
 
-After the initial interactive npm authentication check, package preflight reads run in parallel. Commands use argument arrays through `Bun.spawn`, without shell interpolation.
+Commands use argument arrays through `Bun.spawn`, without shell interpolation. Repository detection uses `git remote get-url origin` and does not modify the checkout.
 
 ## Authentication boundary
 
@@ -93,4 +84,4 @@ npm trust github @utilities-studio/npm-trust \
   --yes
 ```
 
-Later versions use the same Changesets flow as every other Infra package: run `bun run changeset` from the root and land the change. `release-package.yml` calls the shared workflow to version packages, commit the version updates directly to the default branch, and publish in the same job without an npm token. There is no separate npm-trust publisher. Run the workspace setup command with `--apply` to replace trust records for retired workflows.
+`release-package.yml` calls the shared workflow to version packages, commit version updates directly to the default branch, and publish without an npm token. There is no separate npm-trust publisher. Run the workspace setup command to replace trust records for retired workflows.
