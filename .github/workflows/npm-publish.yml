@@ -141,6 +141,6 @@ jobs:
       - name: Publish versioned packages
         env:
           PUBLISH_COMMAND: ${{ inputs.publish_command }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' && 'true' || 'false' }}
         shell: bash
         run: bash --noprofile --norc -e -u -o pipefail -c "$PUBLISH_COMMAND"
