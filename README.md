@@ -449,6 +449,18 @@ Pin the reusable workflow to a full commit SHA. Callers must configure Lerna-Lit
 
 GitHub writes use the automatic `GITHUB_TOKEN` through checkout's persisted credentials. No GitHub App, token broker, server, PAT, or additional secret is needed. The caller grants `contents: write` for version commits and tags, and `id-token: write` for npm publishing.
 
+**Protected default branch (optional GitHub App).** A repository owned by a personal account cannot add `GITHUB_TOKEN` to a ruleset's bypass list. To keep pull-request and signed-commit rules while releases push directly, create a GitHub App with Contents read and write, install it on the repository, add it as the ruleset's bypass actor, and pass it to the workflow:
+
+```yaml
+    uses: Utilities-Studio/infra/.github/workflows/npm-publish.yml@<full-commit-sha>
+    with:
+      release_app_id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
+
+The app's token then pushes the version commit and tags. Without `release_app_id`, the workflow uses `GITHUB_TOKEN` as before.
+
 **Branch rules still apply.** Direct release commits will fail if the target branch requires pull requests or signed commits. This simple workflow does not bypass those requirements. To use it, an owner must permit direct unsigned commits and tag creation; relaxing those rules also affects other writers. GitHub settings are not changed by this repository.
 
 npm trust remains tied to the caller repository and caller workflow filename, not the shared implementation. For Infra, trust `Utilities-Studio/infra`, `release-package.yml`, and environment `npm-publish`. For Lena's `publish.yml` caller, trust `utilities-studio/lena`, `publish.yml`, and the same environment name. npm publishing uses GitHub OIDC and needs no npm token.
