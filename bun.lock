@@ -94,7 +94,7 @@
     },
     "packages/sync-env": {
       "name": "@utilities-studio/sync-env",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "bin": {
         "sync-env": "src/index.ts",
       },
