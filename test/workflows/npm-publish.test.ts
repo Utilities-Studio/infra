@@ -28,13 +28,33 @@ describe('Lerna-Lite release workflow', () => {
 		expect(workflow).toContain('uses: actions/checkout@v7')
 		expect(workflow).toContain('uses: actions/setup-node@v7')
 		expect(workflow).toContain('uses: oven-sh/setup-bun@v2')
-		expect(workflow).not.toMatch(/octo-sts|release-token|create-github-app-token|\n\s+token:/)
+		expect(workflow).not.toMatch(/octo-sts/)
 		expect(workflow).toContain('node-version: "24.15.0"')
 		expect(workflow).toContain('npm install --global npm@12.0.2 --ignore-scripts')
 		expect(workflow).toContain('persist-credentials: true')
 		expect(workflow).toContain('package-manager-cache: false')
-		expect(workflow).toContain('NPM_CONFIG_PROVENANCE: "true"')
-		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|secrets\.|actions\/cache@/)
+		expect(workflow).toContain(
+			"NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' && 'true' || 'false' }}",
+		)
+		expect(workflow).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|_authToken|actions\/cache@/)
+		expect(workflow.match(/secrets\.\w+/g)).toEqual(['secrets.RELEASE_APP_PRIVATE_KEY'])
+	})
+
+	test('pushes with an optional caller GitHub App token and falls back to GITHUB_TOKEN', async () => {
+		const workflow = await Bun.file(sharedPath).text()
+		const appToken = workflow.indexOf('- name: Create release app token')
+		const checkout = workflow.indexOf('- name: Checkout caller repository')
+
+		expect(workflow).toContain('release_app_id:')
+		expect(workflow).toContain('RELEASE_APP_PRIVATE_KEY:')
+		expect(appToken).toBeGreaterThan(-1)
+		expect(checkout).toBeGreaterThan(appToken)
+		expect(workflow).toContain("if: inputs.release_app_id != ''")
+		expect(workflow).toContain('uses: actions/create-github-app-token@v2')
+		expect(workflow).toContain('private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}')
+		expect(workflow.match(/\n\s+token:[^\n]*/g)).toEqual([
+			'\n          token: ${{ steps.release-token.outputs.token || github.token }}',
+		])
 	})
 
 	test('uses ready-made Lerna-Lite commands without Changesets or a custom generator', async () => {
