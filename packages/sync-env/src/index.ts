@@ -195,18 +195,38 @@ export function filterWranglerConfigs(configs: string[], rootDir: string, filter
 	})
 }
 
-function selectCloudflareVars(allVars: Record<string, string>, skipKeys: Set<string>): Record<string, string> {
+type WranglerSecrets = { secrets?: { required?: unknown } }
+
+// wrangler's `secrets` is non-inheritable, so a named environment reads only its own block.
+export function requiredSecretKeys(wrangler: Record<string, unknown>, env: string): Set<string> {
+	const envBlock = (wrangler.env ?? {}) as Record<string, WranglerSecrets | undefined>
+	const block = (env === 'root' ? wrangler : envBlock[env]) as WranglerSecrets | undefined
+	const required = block?.secrets?.required
+	return new Set(Array.isArray(required) ? required.filter((key) => typeof key === 'string') : [])
+}
+
+export function selectCloudflareVars(
+	allVars: Record<string, string>,
+	skipKeys: Set<string>,
+	requiredSecrets: Set<string>
+): Record<string, string> {
 	const vars: Record<string, string> = {}
 	for (const [key, value] of Object.entries(allVars)) {
-		if (!value || skipKeys.has(key) || isSecretKey(key)) continue
+		if (!value || skipKeys.has(key) || isSecretKey(key) || requiredSecrets.has(key)) continue
 		vars[key] = value
 	}
 	return vars
 }
 
-function selectCloudflareSecrets(allVars: Record<string, string>, skipKeys: Set<string>): Record<string, string> {
+export function selectCloudflareSecrets(
+	allVars: Record<string, string>,
+	skipKeys: Set<string>,
+	requiredSecrets: Set<string>
+): Record<string, string> {
 	return Object.fromEntries(
-		Object.entries(allVars).filter(([key, value]) => value && isSecretKey(key) && !skipKeys.has(key))
+		Object.entries(allVars).filter(
+			([key, value]) => value && (isSecretKey(key) || requiredSecrets.has(key)) && !skipKeys.has(key)
+		)
 	)
 }
 
@@ -231,13 +251,13 @@ async function syncCloudflareForConfig(
 	if (options.mode !== 'secrets') {
 		info('    vars (wrangler.jsonc):')
 		if (isRoot) {
-			const vars = selectCloudflareVars(envVars['root'], options.skipKeys)
+			const vars = selectCloudflareVars(envVars['root'], options.skipKeys, requiredSecretKeys(wrangler, 'root'))
 			wrangler.vars = vars
 			info(`      root: ${Object.keys(vars).length} vars (${keySummary(vars)})`)
 		} else {
 			const envBlock = (wrangler.env ?? {}) as Record<string, { vars?: Record<string, string> }>
 			for (const [env, allVars] of Object.entries(envVars)) {
-				const vars = selectCloudflareVars(allVars, options.skipKeys)
+				const vars = selectCloudflareVars(allVars, options.skipKeys, requiredSecretKeys(wrangler, env))
 				envBlock[env] = { ...envBlock[env], vars }
 				info(`      ${env}: ${Object.keys(vars).length} vars (${keySummary(vars)})`)
 			}
@@ -255,7 +275,7 @@ async function syncCloudflareForConfig(
 
 	info('    secrets (bulk upload):')
 	for (const [env, allVars] of Object.entries(envVars)) {
-		const secrets = selectCloudflareSecrets(allVars, options.skipKeys)
+		const secrets = selectCloudflareSecrets(allVars, options.skipKeys, requiredSecretKeys(wrangler, env))
 		const count = Object.keys(secrets).length
 
 		if (count === 0) {
