@@ -30,4 +30,11 @@ describe("supabase-deploy workflow inputs", () => {
     expect(workflow).toContain("run: supabase functions deploy --yes");
     expect(workflow).not.toMatch(/run: supabase functions deploy\n/);
   });
+
+  test("links the project by positional ref, since setup-cli installs the latest CLI", async () => {
+    const workflow = await readWorkflow();
+
+    expect(workflow).toContain("run: supabase link ${{ env.SUPABASE_PROJECT_ID }}");
+    expect(workflow).not.toContain("--project-ref");
+  });
 });

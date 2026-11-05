@@ -155,7 +155,7 @@ Single-env Pages: one set of vars, no distinction between preview and production
 | env file | `.env` | `.env.{environment}` |
 | DOTENV key | `DOTENV_PRIVATE_KEY` | `DOTENV_PRIVATE_KEY_{DEV\|PROD}` |
 | load env vars | reads `.env` | reads `.env.{environment}` |
-| supabase link | `--project-ref` from `.env` | same |
+| supabase link | project ref (`SUPABASE_PROJECT_ID`) from `.env` | same |
 | sync-env | `sync-env supabase` (no `--env`) | `sync-env supabase --env {environment}` |
 | deploy tag | `supabase-deploy-{timestamp}` | `supabase-deploy-{env}-{timestamp}` |
 

@@ -145,7 +145,7 @@ jobs:
           version: latest
 
       - name: Link Supabase project
-        run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_ID }}
+        run: supabase link ${{ env.SUPABASE_PROJECT_ID }}
 
       - name: Sync edge function secrets
         run: |

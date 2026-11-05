@@ -7,7 +7,23 @@ import {
 	requiredSecretKeys,
 	selectCloudflareSecrets,
 	selectCloudflareVars,
+	supabaseProjectArgs,
 } from './index'
+
+describe('supabaseProjectArgs', () => {
+	test('targets the project with --remote on Supabase CLI v3 and later', () => {
+		expect(supabaseProjectArgs('3.0.0', 'abcdefghijklmnopqrst')).toEqual(['--remote=abcdefghijklmnopqrst'])
+		expect(supabaseProjectArgs('v4.1.2\n', 'ref')).toEqual(['--remote=ref'])
+	})
+
+	test('keeps --project-ref on Supabase CLI v2, which has no --remote', () => {
+		expect(supabaseProjectArgs('2.121.0', 'ref')).toEqual(['--project-ref', 'ref'])
+	})
+
+	test('falls back to --project-ref when the version cannot be read', () => {
+		expect(supabaseProjectArgs('', 'ref')).toEqual(['--project-ref', 'ref'])
+	})
+})
 
 describe('sync-env option helpers', () => {
 	test('parses comma-separated key lists', () => {

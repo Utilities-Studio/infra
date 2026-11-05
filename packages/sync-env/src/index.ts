@@ -205,6 +205,12 @@ export function requiredSecretKeys(wrangler: Record<string, unknown>, env: strin
 	return new Set(Array.isArray(required) ? required.filter((key) => typeof key === 'string') : [])
 }
 
+// Supabase CLI v3 targets another project with --remote=<ref> and deprecates --project-ref; v2 only knows --project-ref.
+export function supabaseProjectArgs(cliVersion: string, projectId: string): string[] {
+	const major = Number.parseInt(cliVersion.trim().replace(/^v/, ''), 10)
+	return major >= 3 ? [`--remote=${projectId}`] : ['--project-ref', projectId]
+}
+
 export function selectCloudflareVars(
 	allVars: Record<string, string>,
 	skipKeys: Set<string>,
@@ -345,6 +351,8 @@ async function syncSupabase(
 
 	info(`  scanned keys: ${[...edgeKeys].sort().join(', ')}\n`)
 
+	let cliVersion: string | undefined
+
 	for (const [env, vars] of Object.entries(envVars)) {
 		const projectId = vars.SUPABASE_PROJECT_ID
 		if (!projectId) {
@@ -370,10 +378,11 @@ async function syncSupabase(
 			continue
 		}
 
+		cliVersion ??= (await run(['bunx', 'supabase', '--version'], rootDir)).output
 		const pairs = entries.map(([key, value]) => `${key}=${value}`)
 		// Supabase CLI v3 refuses remote writes without a TTY unless --yes is passed.
 		const result = await run(
-			['bunx', 'supabase', 'secrets', 'set', ...pairs, '--project-ref', projectId, '--yes'],
+			['bunx', 'supabase', 'secrets', 'set', ...pairs, ...supabaseProjectArgs(cliVersion, projectId), '--yes'],
 			rootDir
 		)
 
