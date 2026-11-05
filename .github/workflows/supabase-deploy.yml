@@ -164,9 +164,9 @@ jobs:
         if: inputs.deploy_migrations
         run: |
           if [ "${{ inputs.deploy_seeds }}" = "true" ]; then
-            supabase db push --include-all --include-seed --yes
+            supabase db push --remote --include-all --include-seed --yes
           else
-            supabase db push --include-all --yes
+            supabase db push --remote --include-all --yes
           fi
 
       - name: Deploy edge functions

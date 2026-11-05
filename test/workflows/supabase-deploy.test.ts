@@ -31,6 +31,14 @@ describe("supabase-deploy workflow inputs", () => {
     expect(workflow).not.toMatch(/run: supabase functions deploy\n/);
   });
 
+  test("pushes migrations to the linked project, since CLI v3 db push targets the local stack by default", async () => {
+    const workflow = await readWorkflow();
+
+    expect(workflow).toContain("supabase db push --remote --include-all --include-seed --yes");
+    expect(workflow).toContain("supabase db push --remote --include-all --yes");
+    expect(workflow).not.toMatch(/supabase db push (?!--remote)/);
+  });
+
   test("links the project by positional ref, since setup-cli installs the latest CLI", async () => {
     const workflow = await readWorkflow();
 
