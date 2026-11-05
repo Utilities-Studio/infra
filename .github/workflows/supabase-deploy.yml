@@ -171,7 +171,7 @@ jobs:
 
       - name: Deploy edge functions
         if: inputs.deploy_functions
-        run: supabase functions deploy
+        run: supabase functions deploy --yes
 
       - name: Run post-deploy commands
         if: inputs.post_deploy_commands != ''

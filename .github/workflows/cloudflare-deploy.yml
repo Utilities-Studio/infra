@@ -44,7 +44,8 @@ on:
         default: false
     secrets:
       CLOUDFLARE_API_TOKEN:
-        required: true
+        description: "Fallback when the Infisical or dotenvx env file does not define CLOUDFLARE_API_TOKEN"
+        required: false
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
       DOTENV_PRIVATE_KEY_PRODUCTION:

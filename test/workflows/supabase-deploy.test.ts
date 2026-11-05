@@ -23,4 +23,11 @@ describe("supabase-deploy workflow inputs", () => {
     expect(workflow).toContain("if: ${{ !inputs.skip_project_config_push }}");
     expect(workflow).toContain("run: supabase config push --yes");
   });
+
+  test("confirms every remote Supabase write, which CLI v3 requires without a TTY", async () => {
+    const workflow = await readWorkflow();
+
+    expect(workflow).toContain("run: supabase functions deploy --yes");
+    expect(workflow).not.toMatch(/run: supabase functions deploy\n/);
+  });
 });

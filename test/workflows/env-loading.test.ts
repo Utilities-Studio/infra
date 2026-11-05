@@ -79,6 +79,34 @@ describe("deploy workflow env loading", () => {
 		expect(action.indexOf("source=infisical")).toBeLessThan(action.indexOf("source=dotenvx"));
 	});
 
+	for (const workflowPath of [
+		".github/workflows/cloudflare-deploy.yml",
+		".github/workflows/cloudflare-pages-deploy.yml",
+	]) {
+		test(`${workflowPath} treats the CLOUDFLARE_API_TOKEN secret as an optional fallback`, async () => {
+			const workflow = await readWorkflow(workflowPath);
+
+			expect(workflow).toMatch(/CLOUDFLARE_API_TOKEN:\n(?:\s+description: .+\n)?\s+required: false/);
+			expect(workflow).toContain("CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}");
+		});
+	}
+
+	test("Cloudflare steps read the API token from env loaded out of Infisical or dotenvx", async () => {
+		const pages = await readWorkflow(".github/workflows/cloudflare-pages-deploy.yml");
+		const worker = await readWorkflow(".github/actions/cloudflare-deploy/action.yml");
+
+		for (const source of [pages, worker]) {
+			expect(source).not.toMatch(/api_?[tT]oken: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+			expect(source).toContain("Require Cloudflare API token");
+			expect(source.indexOf("bunx @utilities-studio/github-env@latest")).toBeLessThan(
+				source.indexOf("Require Cloudflare API token"),
+			);
+		}
+		expect(pages).toContain("api_token: ${{ env.CLOUDFLARE_API_TOKEN }}");
+		expect(pages).toContain("apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}");
+		expect(worker).toContain("--skip CLOUDFLARE_API_TOKEN");
+	});
+
 	test("cloudflare-deploy workflow delegates steps to the composite action", async () => {
 		const workflow = await readWorkflow(".github/workflows/cloudflare-deploy.yml");
 

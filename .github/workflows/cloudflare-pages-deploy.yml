@@ -40,7 +40,8 @@ on:
         type: string
     secrets:
       CLOUDFLARE_API_TOKEN:
-        required: true
+        description: "Fallback when the Infisical or dotenvx env file does not define CLOUDFLARE_API_TOKEN"
+        required: false
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
       DOTENV_PRIVATE_KEY_PRODUCTION:
@@ -215,10 +216,17 @@ jobs:
         if: steps.env-tier.outputs.tier != 'none'
         run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
+      - name: Require Cloudflare API token
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is missing. Add it to Infisical (or the env file) or pass the CLOUDFLARE_API_TOKEN secret."
+            exit 1
+          fi
+
       - name: Ensure Cloudflare Pages project exists
         uses: Utilities-Studio/infra/.github/actions/ensure-cloudflare-pages@main
         with:
-          api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          api_token: ${{ env.CLOUDFLARE_API_TOKEN }}
           account_id: ${{ inputs.account_id }}
           project_name: ${{ inputs.project_name }}
           working_directory: ${{ inputs.working_directory }}
@@ -251,7 +259,7 @@ jobs:
         id: deploy
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ inputs.account_id }}
           command: pages deploy ${{ inputs.build_output_directory }} --project-name=${{ inputs.project_name }} --branch=${{ steps.deploy-branch.outputs.branch }}
           workingDirectory: ${{ inputs.working_directory }}

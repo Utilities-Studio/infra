@@ -160,6 +160,14 @@ runs:
       shell: bash
       run: bunx @utilities-studio/github-env@latest --env-file "${{ steps.env-file.outputs.path }}" --skip-reserved --quiet
 
+    - name: Require Cloudflare API token
+      shell: bash
+      run: |
+        if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+          echo "::error::CLOUDFLARE_API_TOKEN is missing. Add it to Infisical (or the env file) or pass the CLOUDFLARE_API_TOKEN secret."
+          exit 1
+        fi
+
     - name: Ensure Cloudflare Worker exists
       if: ${{ inputs.skip_sync_env != 'true' && steps.env-tier.outputs.tier != 'none' }}
       uses: Utilities-Studio/infra/.github/actions/ensure-cloudflare-worker@main
@@ -177,7 +185,7 @@ runs:
         if [ "${{ env.INSTALL_DIR }}" != "${{ inputs.working_directory }}" ]; then
           ENV_DIR_FLAG="--env-dir $GITHUB_WORKSPACE/${{ env.INSTALL_DIR }}"
         fi
-        bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }} $ENV_DIR_FLAG
+        bunx @utilities-studio/sync-env@latest cloudflare ${{ inputs.environment != '' && format('--env {0}', inputs.environment) || '' }} $ENV_DIR_FLAG --skip CLOUDFLARE_API_TOKEN
 
     - name: Run pre-deploy commands
       if: inputs.pre_deploy_commands != ''

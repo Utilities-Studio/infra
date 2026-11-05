@@ -310,7 +310,9 @@ Reusable workflows copy caller repo `vars` / `secrets` into env:
 
 - `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_DOMAIN` (required for Infisical; no Cloud default), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`
 - `DOTENV_PRIVATE_KEY`, `DOTENV_PRIVATE_KEY_DEVELOPMENT`, `DOTENV_PRIVATE_KEY_PRODUCTION`
-- `CLOUDFLARE_API_TOKEN` on Cloudflare jobs
+- `CLOUDFLARE_API_TOKEN` on Cloudflare jobs (optional fallback, see below)
+
+Cloudflare jobs read `CLOUDFLARE_API_TOKEN` from the resolved env file first, so a token stored in Infisical (or dotenvx) is enough. The `CLOUDFLARE_API_TOKEN` GitHub secret is only a fallback when the env file does not define it. The job fails early if neither provides it. The Workers deploy never syncs `CLOUDFLARE_API_TOKEN` to the Worker as a runtime secret.
 
 Env files are created by [`.github/actions/ensure-env-files`](.github/actions/ensure-env-files/action.yml) after `bun ci`:
 
@@ -366,7 +368,15 @@ jobs:
       DOTENV_PRIVATE_KEY_DEVELOPMENT: ${{ secrets.DOTENV_PRIVATE_KEY_DEVELOPMENT }}
 ```
 
-Set GitHub vars `INFISICAL_IDENTITY_ID` and `INFISICAL_PROJECT_SLUG` (optional `INFISICAL_DOMAIN`) to use Infisical instead of dotenvx on that reusable job.
+Set GitHub vars `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, and `INFISICAL_DOMAIN` to use Infisical instead of dotenvx on that reusable job. With `CLOUDFLARE_API_TOKEN` stored in Infisical, the `secrets:` block can be dropped:
+
+```yaml
+jobs:
+  deploy:
+    uses: Utilities-Studio/infra/.github/workflows/cloudflare-deploy.yml@main
+    with:
+      working_directory: "."
+```
 
 Per-job Infisical project (reusable workflows do not inherit caller `env:`):
 
@@ -382,7 +392,7 @@ jobs:
       INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
       INFISICAL_PROJECT_SLUG: my-directus-project
       INFISICAL_DOMAIN: https://infisical.example.com
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # CLOUDFLARE_API_TOKEN comes from the Infisical project.
     steps:
       - uses: Utilities-Studio/infra/.github/actions/cloudflare-deploy@main
         with:

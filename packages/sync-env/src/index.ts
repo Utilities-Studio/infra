@@ -371,7 +371,11 @@ async function syncSupabase(
 		}
 
 		const pairs = entries.map(([key, value]) => `${key}=${value}`)
-		const result = await run(['bunx', 'supabase', 'secrets', 'set', ...pairs, '--project-ref', projectId], rootDir)
+		// Supabase CLI v3 refuses remote writes without a TTY unless --yes is passed.
+		const result = await run(
+			['bunx', 'supabase', 'secrets', 'set', ...pairs, '--project-ref', projectId, '--yes'],
+			rootDir
+		)
 
 		if (result.exitCode === 0) {
 			info(`  ${env}: ok (${entries.length} secrets)`)
