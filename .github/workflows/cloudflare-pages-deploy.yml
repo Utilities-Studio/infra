@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      timeout_minutes:
+        description: "Job timeout in minutes. Raise it for slower self-hosted runners"
+        required: false
+        type: number
+        default: 5
     secrets:
       CLOUDFLARE_API_TOKEN:
         description: "Fallback when the Infisical or dotenvx env file does not define CLOUDFLARE_API_TOKEN"
@@ -79,7 +84,7 @@ jobs:
   deploy:
     name: Deploy Cloudflare Pages
     runs-on: ${{ startsWith(inputs.runs_on, '[') && fromJSON(inputs.runs_on) || inputs.runs_on }}
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     concurrency:
       group: cf-pages-${{ inputs.concurrency_key || inputs.project_name }}-${{ inputs.deploy_branch || github.event.pull_request.number || 'production' }}-${{ github.repository }}

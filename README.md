@@ -322,6 +322,8 @@ Set the caller repository variable `RUNS_ON` to `["self-hosted","linux","x64"]` 
 
 `npm-publish` has no `runs_on` input. npm trusted publishing through OIDC only works on GitHub-hosted runners.
 
+The deploy workflows also accept `timeout_minutes` (Workers and Pages default to 5, Supabase to 20). A small self-hosted runner builds slower than a GitHub-hosted one, so raise it there, for example `timeout_minutes: 20`. Queue time while the runner is busy does not count toward the timeout.
+
 Reusable workflows copy caller repo `vars` / `secrets` into env:
 
 - `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_DOMAIN` (required for Infisical; no Cloud default), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`

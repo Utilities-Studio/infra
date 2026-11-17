@@ -42,6 +42,11 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      timeout_minutes:
+        description: "Job timeout in minutes. Raise it for slower self-hosted runners"
+        required: false
+        type: number
+        default: 20
     secrets:
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
@@ -73,7 +78,7 @@ jobs:
   deploy:
     name: Deploy Supabase
     runs-on: ${{ startsWith(inputs.runs_on, '[') && fromJSON(inputs.runs_on) || inputs.runs_on }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     concurrency:
       group: supabase-deploy-${{ inputs.concurrency_key || inputs.working_directory }}-${{ github.event.pull_request.number || inputs.environment || 'production' }}-${{ github.repository }}
