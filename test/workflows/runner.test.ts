@@ -35,4 +35,17 @@ describe('caller-selected runners', () => {
 			expect(job['timeout-minutes']).toBe('${{ inputs.timeout_minutes }}')
 		}
 	})
+	test.each([
+		['.github/actions/cloudflare-deploy/action.yml', (doc: Doc) => doc.runs?.steps ?? []],
+		['.github/workflows/cloudflare-pages-deploy.yml', (doc: Doc) => doc.jobs?.deploy?.steps ?? []],
+		['.github/workflows/supabase-deploy.yml', (doc: Doc) => doc.jobs?.deploy?.steps ?? []],
+	] as const)('%s only uses the GitHub cache on GitHub-hosted runners', async (path, steps) => {
+		const doc = Bun.YAML.parse(await Bun.file(path).text()) as Doc
+		const cache = steps(doc).find((step) => step.uses?.startsWith('actions/cache@'))
+
+		expect(cache?.if).toBe("runner.environment == 'github-hosted'")
+	})
 })
+
+type Step = { uses?: string; if?: string }
+type Doc = { runs?: { steps: Step[] }; jobs?: Record<string, { steps: Step[] }> }

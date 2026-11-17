@@ -116,7 +116,9 @@ jobs:
         id: bun
         uses: oven-sh/setup-bun@v2
 
+      # Self-hosted runners keep ~/.bun/install/cache on disk; saving it to GitHub only adds upload time.
       - name: Restore Bun dependency cache
+        if: runner.environment == 'github-hosted'
         uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache

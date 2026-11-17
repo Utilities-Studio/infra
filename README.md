@@ -300,7 +300,7 @@ All deployment workflows:
 
 - Detect Infisical (OIDC) or dotenvx, then write `.env` / `.env.development` / `.env.production`
 - Detect env tier automatically (single vs multi) from those files
-- Restore Bun's global dependency cache from the caller's lockfile, then run `bun ci`
+- Restore Bun's global dependency cache from the caller's lockfile (GitHub-hosted runners only; self-hosted runners keep it on disk), then run `bun ci`
 - Post deployment status as PR comments
 - Gate production deploys behind GitHub environments
 
