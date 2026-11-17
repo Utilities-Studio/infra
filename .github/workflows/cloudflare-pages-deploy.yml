@@ -38,6 +38,11 @@ on:
         description: "Cloudflare account ID"
         required: true
         type: string
+      runs_on:
+        description: "Runner label such as ubuntu-latest, or a JSON array of labels for a self-hosted runner"
+        required: false
+        type: string
+        default: "ubuntu-latest"
     secrets:
       CLOUDFLARE_API_TOKEN:
         description: "Fallback when the Infisical or dotenvx env file does not define CLOUDFLARE_API_TOKEN"
@@ -73,7 +78,7 @@ env:
 jobs:
   deploy:
     name: Deploy Cloudflare Pages
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs_on, '[') && fromJSON(inputs.runs_on) || inputs.runs_on }}
     timeout-minutes: 5
 
     concurrency:

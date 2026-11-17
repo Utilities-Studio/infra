@@ -306,6 +306,22 @@ All deployment workflows:
 
 `with:` is deploy config only (`environment`, `working_directory`, `skip_build`, …). Infisical and dotenvx credentials are job env, not workflow inputs.
 
+### Runners
+
+Every deployment and cleanup workflow accepts `runs_on`. It defaults to `ubuntu-latest`. Pass one label, or a JSON array of labels for a self-hosted runner:
+
+```yaml
+jobs:
+  deploy:
+    uses: Utilities-Studio/infra/.github/workflows/cloudflare-deploy.yml@main
+    with:
+      runs_on: ${{ vars.RUNS_ON || 'ubuntu-latest' }}
+```
+
+Set the caller repository variable `RUNS_ON` to `["self-hosted","linux","x64"]` to move its jobs, and delete it to move back. Register the runner on the caller repository or its organization, because called jobs run in the caller's context. The runner needs `bash`, `git`, `curl`, `tar`, `unzip`, and `jq` (Pages cleanup). Setup steps install Node, Bun, the Supabase CLI, and wrangler. Env files are written into the workspace, so prefer ephemeral runners, and never attach a self-hosted runner to a repository that runs pull requests from forks.
+
+`npm-publish` has no `runs_on` input. npm trusted publishing through OIDC only works on GitHub-hosted runners.
+
 Reusable workflows copy caller repo `vars` / `secrets` into env:
 
 - `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_DOMAIN` (required for Infisical; no Cloud default), `INFISICAL_ENV_SLUG`, `INFISICAL_SECRET_PATH`, `INFISICAL_RECURSIVE`

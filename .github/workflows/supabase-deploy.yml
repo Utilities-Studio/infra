@@ -37,6 +37,11 @@ on:
         required: false
         type: string
         default: ""
+      runs_on:
+        description: "Runner label such as ubuntu-latest, or a JSON array of labels for a self-hosted runner"
+        required: false
+        type: string
+        default: "ubuntu-latest"
     secrets:
       DOTENV_PRIVATE_KEY_DEVELOPMENT:
         required: false
@@ -67,7 +72,7 @@ env:
 jobs:
   deploy:
     name: Deploy Supabase
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs_on, '[') && fromJSON(inputs.runs_on) || inputs.runs_on }}
     timeout-minutes: 20
 
     concurrency:
